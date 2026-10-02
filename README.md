@@ -45,7 +45,7 @@ java -jar target/rest-api-0.0.1-SNAPSHOT.jar
 
 ## API и Swagger UI
 
-- Swagger UI: <http://localhost:8080/swagger-ui/index.html>
+- Swagger UI: <http://localhost:8080/swagger-ui.html>
 - OpenAPI JSON: <http://localhost:8080/v3/api-docs>
 - Спецификация OpenAPI, используемая для генерации моделей: `src/main/resources/openapi/openapi.yaml`
 
