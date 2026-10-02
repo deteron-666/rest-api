@@ -32,3 +32,6 @@ databaseChangeLog:
                   type: INTEGER
                   constraints:
                     nullable: false
+      rollback:
+        - dropTable:
+            tableName: products

@@ -50,3 +50,9 @@ databaseChangeLog:
             constraintName: fk_order_items_order
             referencedTableName: orders
             referencedColumnNames: id
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: order_items
+            constraintName: fk_order_items_order
+        - dropTable:
+            tableName: order_items

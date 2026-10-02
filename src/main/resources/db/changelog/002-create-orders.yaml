@@ -29,3 +29,6 @@ databaseChangeLog:
                   type: DECIMAL(19, 2)
                   constraints:
                     nullable: false
+      rollback:
+        - dropTable:
+            tableName: orders
