@@ -1,0 +1,31 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-orders
+      author: rest-api
+      changes:
+        - createTable:
+            tableName: orders
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_orders
+                    nullable: false
+              - column:
+                  name: customer_name
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: total_amount
+                  type: DECIMAL(19, 2)
+                  constraints:
+                    nullable: false
