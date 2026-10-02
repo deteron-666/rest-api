@@ -1,6 +1,6 @@
 # REST API
 
-REST API для управления каталогом товаров и заказами. Проект собран на Java 21 и Spring Boot 4.
+REST API для управления каталогом товаров и заказами. Проект собран на Java 21 и Spring Boot 3.5.16.
 
 ## Требования
 
@@ -65,4 +65,4 @@ java -jar target/rest-api-0.0.1-SNAPSHOT.jar
 
 ## База данных
 
-По умолчанию используется H2 в режиме совместимости с PostgreSQL. База данных хранится в памяти и создаётся заново при старте приложения. Liquibase применяет миграции схемы при запуске; master changelog и миграции находятся в `src/main/resources/db/changelog`. Hibernate проверяет схему (`ddl-auto: validate`), но не изменяет её. H2 Console доступна по адресу <http://localhost:8080/h2-console>; параметры подключения указаны в `src/main/resources/application.yaml`.
+По умолчанию используется H2 в режиме совместимости с PostgreSQL. База данных хранится в памяти и создаётся заново при старте приложения. Слой хранения использует Spring JDBC (`JdbcTemplate`) с SQL-запросами в репозиториях. Liquibase применяет миграции схемы при запуске; master changelog и миграции находятся в `src/main/resources/db/changelog`. H2 Console доступна по адресу <http://localhost:8080/h2-console>; параметры подключения указаны в `src/main/resources/application.yaml`.

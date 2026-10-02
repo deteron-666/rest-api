@@ -7,12 +7,12 @@ import com.mixamus.restapi.entity.OrderItem;
 import com.mixamus.restapi.entity.Product;
 import com.mixamus.restapi.repository.OrderRepository;
 import com.mixamus.restapi.repository.ProductRepository;
-import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
