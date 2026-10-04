@@ -1,0 +1,116 @@
+###
+# REST API request collection
+#
+# Как использовать в IntelliJ IDEA:
+# 1. Запустите приложение (например, ./mvnw spring-boot:run).
+# 2. Убедитесь, что сервер доступен по адресу http://localhost:8080.
+# 3. Запускайте запросы по порядку, нажимая зелёный значок Run рядом с запросом.
+#    Запросы создания сохраняют productId и orderId из ответа для следующих запросов.
+# 4. Для другого адреса измените baseUrl ниже или выберите другой HTTP Client environment.
+#
+# Сценарий создания заказа требует сначала выполнить запрос создания товара.
+# Удаление заказа не возвращает списанный товар на склад.
+
+@baseUrl = http://localhost:8080
+
+### Получить список товаров
+GET {{baseUrl}}/api/products
+Accept: application/json
+
+### Создать товар для сценария заказа
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "Mechanical keyboard",
+  "description": "Keyboard created from the HTTP client",
+  "price": 79.50,
+  "stockQuantity": 10
+}
+
+> {%
+    client.global.set("productId", response.body.id);
+%}
+
+### Получить товар по ID, сохранённому после создания
+GET {{baseUrl}}/api/products/{{productId}}
+Accept: application/json
+
+### Обновить товар
+PUT {{baseUrl}}/api/products/{{productId}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "Updated mechanical keyboard",
+  "description": "Updated from the HTTP client",
+  "price": 84.90,
+  "stockQuantity": 10
+}
+
+### Создать заказ на две единицы товара
+# В ответе сохраняется orderId для следующих запросов.
+POST {{baseUrl}}/api/orders
+Content-Type: application/json
+Accept: application/json
+
+{
+  "customerName": "Alex Smith",
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 2
+    }
+  ]
+}
+
+> {%
+    client.global.set("orderId", response.body.id);
+%}
+
+### Получить заказ по ID, сохранённому после создания
+GET {{baseUrl}}/api/orders/{{orderId}}
+Accept: application/json
+
+### Получить список заказов
+GET {{baseUrl}}/api/orders
+Accept: application/json
+
+### Проверить остаток товара после создания заказа
+GET {{baseUrl}}/api/products/{{productId}}
+Accept: application/json
+
+### Удалить заказ
+# Удаление заказа не восстанавливает остаток товара.
+DELETE {{baseUrl}}/api/orders/{{orderId}}
+Accept: application/json
+
+### Удалить товар
+DELETE {{baseUrl}}/api/products/{{productId}}
+Accept: application/json
+
+### Проверка валидации: некорректный товар (ожидается 400 Bad Request)
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "",
+  "price": -1,
+  "stockQuantity": -1
+}
+
+### Проверка наличия: неизвестный товар (ожидается 404 Not Found)
+GET {{baseUrl}}/api/products/9223372036854775807
+Accept: application/json
+
+### Проверка бизнес-правила: заказ без позиций (ожидается 400 Bad Request)
+POST {{baseUrl}}/api/orders
+Content-Type: application/json
+Accept: application/json
+
+{
+  "customerName": "Alex Smith",
+  "items": []
+}
