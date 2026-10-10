@@ -29,7 +29,7 @@ public class OrderRepository {
     private static final QOrders order = QOrders.orders;
     private static final QOrderItems orderItem = QOrderItems.orderItems;
 
-    private static final ConstructorExpression<OrderItem> ORDER_ITEM = Projections.constructor(OrderItem.class,
+    private static final ConstructorExpression<OrderItem> ORDER_ITEM_PROJECTION = Projections.constructor(OrderItem.class,
             orderItem.productId, orderItem.productName, orderItem.quantity,
             orderItem.unitPrice, orderItem.totalPrice);
 
@@ -127,7 +127,7 @@ public class OrderRepository {
         Map<Long, List<OrderItem>> itemsByOrderId = queryFactory.from(orderItem)
                 .where(orderItem.orderId.in(orderIds))
                 .orderBy(orderItem.id.asc())
-                .transform(groupBy(orderItem.orderId).as(list(ORDER_ITEM)));
+                .transform(groupBy(orderItem.orderId).as(list(ORDER_ITEM_PROJECTION)));
 
         return orderRows.stream()
                 .map(row -> new Order(

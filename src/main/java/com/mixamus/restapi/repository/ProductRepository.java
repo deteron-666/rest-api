@@ -23,13 +23,13 @@ public class ProductRepository {
     /**
      * Проекция строки таблицы прямо в record: типы колонок проверяются компилятором через Q-класс.
      */
-    private static final ConstructorExpression<Product> PRODUCT = Projections.constructor(Product.class,
+    private static final ConstructorExpression<Product> PRODUCT_PROJECTION = Projections.constructor(Product.class,
             product.id, product.name, product.description, product.price, product.stockQuantity);
 
     private final SQLQueryFactory queryFactory;
 
     public List<Product> findAll(ProductFilter filter, long offset, int limit) {
-        return queryFactory.select(PRODUCT)
+        return queryFactory.select(PRODUCT_PROJECTION)
                 .from(product)
                 .where(toPredicate(filter))
                 .orderBy(product.id.asc())
@@ -48,14 +48,14 @@ public class ProductRepository {
     }
 
     public Optional<Product> findById(Long id) {
-        return Optional.ofNullable(queryFactory.select(PRODUCT)
+        return Optional.ofNullable(queryFactory.select(PRODUCT_PROJECTION)
                 .from(product)
                 .where(product.id.eq(id))
                 .fetchOne());
     }
 
     public List<Product> findAllByIds(Collection<Long> ids) {
-        return queryFactory.select(PRODUCT)
+        return queryFactory.select(PRODUCT_PROJECTION)
                 .from(product)
                 .where(product.id.in(ids))
                 .fetch();
