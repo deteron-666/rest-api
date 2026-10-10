@@ -1,10 +1,12 @@
 databaseChangeLog:
   - changeSet:
       id: 002-create-orders
-      author: rest-api
+      author: max
+      comment: Заказы покупателей (шапка заказа, позиции хранятся в order_items)
       changes:
         - createTable:
             tableName: orders
+            remarks: Заказы покупателей
             columns:
               - column:
                   name: id
@@ -17,16 +19,19 @@ databaseChangeLog:
               - column:
                   name: customer_name
                   type: VARCHAR(100)
+                  remarks: Имя покупателя
                   constraints:
                     nullable: false
               - column:
                   name: status
                   type: INTEGER
+                  remarks: Статус заказа. Переведён в VARCHAR в changeset 004-order-status-as-string
                   constraints:
                     nullable: false
               - column:
                   name: total_amount
                   type: DECIMAL(19, 2)
+                  remarks: Сумма заказа, равна сумме total_price всех позиций
                   constraints:
                     nullable: false
       rollback:

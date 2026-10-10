@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    # Все таблицы приложения (и служебные таблицы Liquibase) живут в схеме rest_api
+    url: jdbc:postgresql://localhost:5432/postgres?currentSchema=rest_api
+    username: postgres
+    password: password
+    hikari:
+      # Создаём схему, если её ещё нет: выполняется при открытии каждого соединения пула,
+      # то есть до того, как Liquibase начнёт накатывать миграции
+      connection-init-sql: CREATE SCHEMA IF NOT EXISTS rest_api
+  liquibase:
+    default-schema: rest_api

@@ -1,0 +1,50 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-constraints-and-indexes
+      author: max
+      comment: >
+        Инварианты на уровне БД, индекс для JOIN/DELETE по order_id и каскадное удаление позиций заказа.
+        Внешнего ключа order_items.product_id -> products нет намеренно: позиция хранит снимок товара
+        (название и цену), поэтому товар можно удалить, не трогая историю заказов.
+      changes:
+        - createIndex:
+            tableName: order_items
+            indexName: idx_order_items_order_id
+            columns:
+              - column:
+                  name: order_id
+        - sql:
+            sql: ALTER TABLE products ADD CONSTRAINT ck_products_price_non_negative CHECK (price >= 0)
+        - sql:
+            sql: ALTER TABLE products ADD CONSTRAINT ck_products_stock_non_negative CHECK (stock_quantity >= 0)
+        - sql:
+            sql: ALTER TABLE order_items ADD CONSTRAINT ck_order_items_quantity_positive CHECK (quantity > 0)
+        - dropForeignKeyConstraint:
+            baseTableName: order_items
+            constraintName: fk_order_items_order
+        - addForeignKeyConstraint:
+            baseTableName: order_items
+            baseColumnNames: order_id
+            constraintName: fk_order_items_order
+            referencedTableName: orders
+            referencedColumnNames: id
+            onDelete: CASCADE
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: order_items
+            constraintName: fk_order_items_order
+        - addForeignKeyConstraint:
+            baseTableName: order_items
+            baseColumnNames: order_id
+            constraintName: fk_order_items_order
+            referencedTableName: orders
+            referencedColumnNames: id
+        - sql:
+            sql: ALTER TABLE order_items DROP CONSTRAINT ck_order_items_quantity_positive
+        - sql:
+            sql: ALTER TABLE products DROP CONSTRAINT ck_products_stock_non_negative
+        - sql:
+            sql: ALTER TABLE products DROP CONSTRAINT ck_products_price_non_negative
+        - dropIndex:
+            tableName: order_items
+            indexName: idx_order_items_order_id

@@ -1,60 +1,54 @@
 package com.mixamus.restapi.controller;
 
+import com.mixamus.restapi.generated.api.ProductsApi;
 import com.mixamus.restapi.generated.model.ProductDto;
+import com.mixamus.restapi.repository.ProductFilter;
+import com.mixamus.restapi.service.PageResult;
 import com.mixamus.restapi.service.ProductService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
+import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Маршруты, параметры, валидация и описание для Swagger берутся из интерфейса ProductsApi,
+ * сгенерированного из openapi.yaml, поэтому спецификация и реализация не могут разойтись.
+ */
 @RestController
-@RequestMapping("/api")
 @RequiredArgsConstructor
-@Tag(name = "Products", description = "Product catalog operations")
-public class ProductController {
+public class ProductController implements ProductsApi {
 
     private final ProductService productService;
 
-    @GetMapping("/products")
-    @Operation(summary = "Get all products")
-    public ResponseEntity<List<ProductDto>> getProducts() {
-        return ResponseEntity.ok(productService.findAll());
+    @Override
+    public ResponseEntity<List<ProductDto>> getProducts(String name, BigDecimal minPrice, BigDecimal maxPrice,
+                                                        Boolean inStock, Integer page, Integer size) {
+        PageResult<ProductDto> result = productService.findAll(
+                new ProductFilter(name, minPrice, maxPrice, inStock), page, size);
+        return ResponseEntity.ok()
+                .header(Headers.TOTAL_COUNT, String.valueOf(result.total()))
+                .body(result.items());
     }
 
-    @GetMapping("/products/{productId}")
-    @Operation(summary = "Get a product by ID")
-    public ResponseEntity<ProductDto> getProduct(@PathVariable Long productId) {
+    @Override
+    public ResponseEntity<ProductDto> getProductById(Long productId) {
         return ResponseEntity.ok(productService.findById(productId));
     }
 
-    @PostMapping("/products")
-    @Operation(summary = "Create a product")
-    public ResponseEntity<ProductDto> createProduct(@Valid @RequestBody ProductDto request) {
-        ProductDto created = productService.create(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    @Override
+    public ResponseEntity<ProductDto> createProduct(ProductDto productDto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.create(productDto));
     }
 
-    @PutMapping("/products/{productId}")
-    @Operation(summary = "Update a product")
-    public ResponseEntity<ProductDto> updateProduct(@PathVariable Long productId,
-                                                  @Valid @RequestBody ProductDto request) {
-        return ResponseEntity.ok(productService.update(productId, request));
+    @Override
+    public ResponseEntity<ProductDto> updateProduct(Long productId, ProductDto productDto) {
+        return ResponseEntity.ok(productService.update(productId, productDto));
     }
 
-    @DeleteMapping("/products/{productId}")
-    @Operation(summary = "Delete a product")
-    public ResponseEntity<Void> deleteProduct(@PathVariable Long productId) {
+    @Override
+    public ResponseEntity<Void> deleteProduct(Long productId) {
         productService.delete(productId);
         return ResponseEntity.noContent().build();
     }

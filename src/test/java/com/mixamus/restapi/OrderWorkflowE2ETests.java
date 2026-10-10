@@ -7,12 +7,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.mixamus.restapi.generated.model.OrderDto;
 import com.mixamus.restapi.generated.model.OrderItemDto;
 import com.mixamus.restapi.generated.model.ProductDto;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
@@ -23,10 +25,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-@SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "spring.datasource.url=jdbc:h2:mem:order-workflow-e2e;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false"
-)
+@ActiveProfiles("test")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class OrderWorkflowE2ETests {
 
     @LocalServerPort
@@ -40,15 +40,14 @@ class OrderWorkflowE2ETests {
 
     @BeforeEach
     void clearDatabase() {
-        jdbcTemplate.update("DELETE FROM order_items");
         jdbcTemplate.update("DELETE FROM orders");
         jdbcTemplate.update("DELETE FROM products");
     }
 
     @Test
     void customerCanPlaceAndRetrieveOrderAndRejectedOrderDoesNotChangeInventory() {
-        long keyboardId = createProduct("Keyboard", 50.00, 8);
-        long mouseId = createProduct("Mouse", 20.00, 1);
+        long keyboardId = createProduct("Keyboard", "50.00", 8);
+        long mouseId = createProduct("Mouse", "20.00", 1);
 
         ResponseEntity<JsonNode> createdOrder = postJson("/api/orders",
                 orderRequest("Customer", item(keyboardId, 2), item(mouseId, 1)));
@@ -76,7 +75,7 @@ class OrderWorkflowE2ETests {
         ResponseEntity<JsonNode> rejectedOrder = postJson("/api/orders",
                 orderRequest("Another customer", item(keyboardId, 3), item(mouseId, 2)));
 
-        assertEquals(HttpStatus.BAD_REQUEST, rejectedOrder.getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, rejectedOrder.getStatusCode());
         assertEquals(6, getJson("/api/products/" + keyboardId).getBody()
                 .get("stockQuantity").asInt());
         assertEquals(0, getJson("/api/products/" + mouseId).getBody()
@@ -89,9 +88,9 @@ class OrderWorkflowE2ETests {
         assertEquals(HttpStatus.NOT_FOUND, getJson("/api/orders/" + orderId).getStatusCode());
     }
 
-    private long createProduct(String name, double price, int stockQuantity) {
+    private long createProduct(String name, String price, int stockQuantity) {
         ResponseEntity<JsonNode> response = postJson("/api/products",
-                new ProductDto(name, price, stockQuantity));
+                new ProductDto(name, new BigDecimal(price), stockQuantity));
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertNotNull(response.getBody());
         return response.getBody().get("id").longValue();

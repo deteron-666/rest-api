@@ -1,24 +1,16 @@
 package com.mixamus.restapi.entity;
 
 import java.math.BigDecimal;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-public class Product {
+public record Product(
+        Long id,
+        String name,
+        String description,
+        BigDecimal price,
+        Integer stockQuantity
+) {
 
-    private Long id;
-
-    private String name;
-
-    private String description;
-
-    private BigDecimal price;
-
-    private Integer stockQuantity = 0;
+    public Product withId(Long id) {
+        return new Product(id, name, description, price, stockQuantity);
+    }
 }

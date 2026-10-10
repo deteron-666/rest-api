@@ -2,21 +2,59 @@ openapi: 3.0.3
 info:
   title: Order Management API
   version: 1.0.0
+  description: API for managing products and customer orders
+tags:
+  - name: Products
+    description: Product catalog operations
+  - name: Orders
+    description: Customer order operations
 paths:
   /api/products:
     get:
+      tags: [Products]
       summary: Get all products
+      description: Returns a page of products filtered by the optional criteria. The total number of matches is returned in the X-Total-Count header.
       operationId: getProducts
+      parameters:
+        - in: query
+          name: name
+          description: Case-insensitive substring of the product name
+          schema:
+            type: string
+            maxLength: 100
+        - in: query
+          name: minPrice
+          schema:
+            type: number
+            minimum: 0
+        - in: query
+          name: maxPrice
+          schema:
+            type: number
+            minimum: 0
+        - in: query
+          name: inStock
+          description: true - only products with stock, false - only products without stock
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
       responses:
         '200':
           description: List of products
+          headers:
+            X-Total-Count:
+              $ref: '#/components/headers/XTotalCount'
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/ProductDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
     post:
+      tags: [Products]
       summary: Create a product
       operationId: createProduct
       requestBody:
@@ -32,17 +70,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
   /api/products/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
     get:
+      tags: [Products]
       summary: Get product by id
       operationId: getProductById
-      parameters:
-        - in: path
-          name: productId
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
         '200':
           description: Product found
@@ -50,16 +86,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
     put:
+      tags: [Products]
       summary: Update product
       operationId: updateProduct
-      parameters:
-        - in: path
-          name: productId
-          required: true
-          schema:
-            type: integer
-            format: int64
       requestBody:
         required: true
         content:
@@ -73,34 +105,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProductDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
+      tags: [Products]
       summary: Delete product
+      description: Existing orders keep the product name and price snapshot, so a product can be deleted even if it was ordered.
       operationId: deleteProduct
-      parameters:
-        - in: path
-          name: productId
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
         '204':
           description: Product deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/orders:
     get:
+      tags: [Orders]
       summary: Get all orders
+      description: Returns a page of orders filtered by the optional criteria. The total number of matches is returned in the X-Total-Count header.
       operationId: getOrders
+      parameters:
+        - in: query
+          name: customerName
+          description: Case-insensitive substring of the customer name
+          schema:
+            type: string
+            maxLength: 100
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
       responses:
         '200':
           description: Orders list
+          headers:
+            X-Total-Count:
+              $ref: '#/components/headers/XTotalCount'
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/OrderDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
     post:
+      tags: [Orders]
       summary: Create an order
+      description: Creates a PENDING order and reserves stock for every item.
       operationId: createOrder
       requestBody:
         required: true
@@ -115,17 +170,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OrderDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
     get:
+      tags: [Orders]
       summary: Get order by id
       operationId: getOrderById
-      parameters:
-        - in: path
-          name: orderId
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
         '200':
           description: Order found
@@ -133,21 +190,139 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OrderDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
+      tags: [Orders]
       summary: Delete order
+      description: Deletes a PENDING or CANCELLED order. Stock reserved by a PENDING order is returned. PAID orders cannot be deleted.
       operationId: deleteOrder
-      parameters:
-        - in: path
-          name: orderId
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
         '204':
           description: Order deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/orders/{orderId}/pay:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Orders]
+      summary: Pay an order
+      description: Moves a PENDING order to PAID.
+      operationId: payOrder
+      responses:
+        '200':
+          description: Order paid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/orders/{orderId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Orders]
+      summary: Cancel an order
+      description: Moves a PENDING order to CANCELLED and returns the reserved stock.
+      operationId: cancelOrder
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 components:
+  parameters:
+    ProductId:
+      in: path
+      name: productId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    OrderId:
+      in: path
+      name: orderId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    Page:
+      in: query
+      name: page
+      description: Zero-based page index
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+    Size:
+      in: query
+      name: size
+      description: Page size
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+  headers:
+    XTotalCount:
+      description: Total number of items matching the filter
+      schema:
+        type: integer
+        format: int64
+  responses:
+    BadRequest:
+      description: Request is invalid
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Request conflicts with the current state (not enough stock, wrong order status)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
   schemas:
+    Problem:
+      description: RFC 9457 problem details
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string
+        instance:
+          type: string
+        errors:
+          type: object
+          description: Field validation errors, field name to message
+          additionalProperties:
+            type: string
     ProductDto:
       type: object
       required:
@@ -163,17 +338,28 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+          pattern: '(?s).*\S.*'
         description:
           type: string
           nullable: true
+          maxLength: 500
         price:
+          description: Price with at most 2 fraction digits
           type: number
-          format: double
           minimum: 0
+          maximum: 1000000000
+          x-field-extra-annotation: '@jakarta.validation.constraints.Digits(integer = 10, fraction = 2)'
         stockQuantity:
           type: integer
           format: int32
           minimum: 0
+          maximum: 1000000
+    OrderStatus:
+      type: string
+      enum:
+        - PENDING
+        - PAID
+        - CANCELLED
     OrderItemDto:
       type: object
       required:
@@ -191,13 +377,12 @@ components:
           type: integer
           format: int32
           minimum: 1
+          maximum: 10000
         unitPrice:
           type: number
-          format: double
           readOnly: true
         totalPrice:
           type: number
-          format: double
           readOnly: true
     OrderDto:
       type: object
@@ -213,14 +398,17 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+          pattern: '(?s).*\S.*'
         status:
-          type: string
-          default: PENDING
+          description: Read-only. Assigned by the server and changed via the pay and cancel operations.
+          allOf:
+            - $ref: '#/components/schemas/OrderStatus'
         totalAmount:
           type: number
-          format: double
           readOnly: true
         items:
           type: array
+          minItems: 1
+          maxItems: 100
           items:
             $ref: '#/components/schemas/OrderItemDto'

@@ -1,0 +1,64 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-order-status-as-string
+      author: max
+      comment: >
+        Статус заказа хранится строкой (имя enum), а не порядковым номером, который ломается
+        при перестановке значений enum. Существующие значения переносятся: 0 -> PENDING, 1 -> PAID, 2 -> CANCELLED
+      changes:
+        - addColumn:
+            tableName: orders
+            columns:
+              - column:
+                  name: status_code
+                  type: VARCHAR(20)
+                  remarks: "Статус заказа: PENDING, PAID или CANCELLED"
+        - sql:
+            sql: >
+              UPDATE orders SET status_code = CASE status
+                WHEN 0 THEN 'PENDING'
+                WHEN 1 THEN 'PAID'
+                WHEN 2 THEN 'CANCELLED'
+              END
+        - addNotNullConstraint:
+            tableName: orders
+            columnName: status_code
+            columnDataType: VARCHAR(20)
+        - dropColumn:
+            tableName: orders
+            columnName: status
+        - renameColumn:
+            tableName: orders
+            oldColumnName: status_code
+            newColumnName: status
+            columnDataType: VARCHAR(20)
+        - sql:
+            sql: ALTER TABLE orders ADD CONSTRAINT ck_orders_status CHECK (status IN ('PENDING', 'PAID', 'CANCELLED'))
+      rollback:
+        - sql:
+            sql: ALTER TABLE orders DROP CONSTRAINT ck_orders_status
+        - addColumn:
+            tableName: orders
+            columns:
+              - column:
+                  name: status_ordinal
+                  type: INTEGER
+        - sql:
+            sql: >
+              UPDATE orders SET status_ordinal = CASE status
+                WHEN 'PENDING' THEN 0
+                WHEN 'PAID' THEN 1
+                WHEN 'CANCELLED' THEN 2
+              END
+        - addNotNullConstraint:
+            tableName: orders
+            columnName: status_ordinal
+            columnDataType: INTEGER
+        - dropColumn:
+            tableName: orders
+            columnName: status
+        - renameColumn:
+            tableName: orders
+            oldColumnName: status_ordinal
+            newColumnName: status
+            columnDataType: INTEGER

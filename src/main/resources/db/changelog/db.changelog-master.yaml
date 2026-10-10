@@ -5,3 +5,7 @@ databaseChangeLog:
       file: db/changelog/002-create-orders.yaml
   - include:
       file: db/changelog/003-create-order-items.yaml
+  - include:
+      file: db/changelog/004-order-status-as-string.yaml
+  - include:
+      file: db/changelog/005-constraints-and-indexes.yaml

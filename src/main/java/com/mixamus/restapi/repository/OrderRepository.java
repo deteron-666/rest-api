@@ -1,125 +1,152 @@
 package com.mixamus.restapi.repository;
 
+import static com.querydsl.core.group.GroupBy.groupBy;
+import static com.querydsl.core.group.GroupBy.list;
+
 import com.mixamus.restapi.entity.Order;
 import com.mixamus.restapi.entity.OrderItem;
-import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import com.mixamus.restapi.generated.querydsl.QOrderItems;
+import com.mixamus.restapi.generated.querydsl.QOrders;
+import com.querydsl.core.BooleanBuilder;
+import com.querydsl.core.Tuple;
+import com.querydsl.core.types.ConstructorExpression;
+import com.querydsl.core.types.Predicate;
+import com.querydsl.core.types.Projections;
+import com.querydsl.sql.SQLQuery;
+import com.querydsl.sql.SQLQueryFactory;
+import com.querydsl.sql.dml.SQLInsertClause;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataRetrievalFailureException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.ResultSetExtractor;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 
 @Repository
 @RequiredArgsConstructor
 public class OrderRepository {
 
-    private static final String SELECT_ORDER_WITH_ITEMS = """
-            SELECT o.id AS order_id, o.customer_name, o.status, o.total_amount,
-                   i.id AS item_id, i.product_id, i.product_name, i.quantity,
-                   i.unit_price, i.total_price
-            FROM orders o
-            LEFT JOIN order_items i ON i.order_id = o.id
-            """;
+    private static final QOrders order = QOrders.orders;
+    private static final QOrderItems orderItem = QOrderItems.orderItems;
 
-    private final JdbcTemplate jdbcTemplate;
+    private static final ConstructorExpression<OrderItem> ORDER_ITEM = Projections.constructor(OrderItem.class,
+            orderItem.productId, orderItem.productName, orderItem.quantity,
+            orderItem.unitPrice, orderItem.totalPrice);
 
-    public List<Order> findAll() {
-        return queryOrders("");
+    private final SQLQueryFactory queryFactory;
+
+    /**
+     * Пагинация применяется к заказам, а не к строкам JOIN с позициями:
+     * сначала выбирается страница заказов, затем одним запросом их позиции.
+     */
+    public List<Order> findAll(OrderFilter filter, long offset, int limit) {
+        List<Tuple> rows = selectOrders()
+                .where(toPredicate(filter))
+                .orderBy(order.id.asc())
+                .offset(offset)
+                .limit(limit)
+                .fetch();
+        return withItems(rows);
+    }
+
+    public long count(OrderFilter filter) {
+        Long count = queryFactory.select(order.count())
+                .from(order)
+                .where(toPredicate(filter))
+                .fetchOne();
+        return count == null ? 0 : count;
     }
 
     public Optional<Order> findById(Long id) {
-        return queryOrders("WHERE o.id = ?", id)
+        return withItems(selectOrders().where(order.id.eq(id)).fetch())
                 .stream()
                 .findFirst();
     }
 
-    public Order save(Order order) {
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement statement = connection.prepareStatement("""
-                            INSERT INTO orders (customer_name, status, total_amount)
-                            VALUES (?, ?, ?)
-                            """,
-                    Statement.RETURN_GENERATED_KEYS);
-            statement.setString(1, order.getCustomerName());
-            statement.setInt(2, order.getStatus().ordinal());
-            statement.setBigDecimal(3, order.getTotalAmount());
-            return statement;
-        }, keyHolder);
-
-        if (keyHolder.getKey() == null) {
+    public Order insert(Order newOrder) {
+        Long id = queryFactory.insert(order)
+                .set(order.customerName, newOrder.customerName())
+                .set(order.status, newOrder.status().name())
+                .set(order.totalAmount, newOrder.totalAmount())
+                .executeWithKey(order.id);
+        if (id == null) {
             throw new IllegalStateException("Database did not return the generated order ID");
         }
-        order.setId(keyHolder.getKey().longValue());
 
-        for (OrderItem item : order.getItems()) {
-            item.setOrder(order);
-            jdbcTemplate.update("""
-                            INSERT INTO order_items (
-                                order_id, product_id, product_name, quantity, unit_price, total_price
-                            ) VALUES (?, ?, ?, ?, ?, ?)
-                            """,
-                    order.getId(),
-                    item.getProductId(),
-                    item.getProductName(),
-                    item.getQuantity(),
-                    item.getUnitPrice(),
-                    item.getTotalPrice());
+        // Все позиции вставляются одним batch-запросом
+        SQLInsertClause insertItems = queryFactory.insert(orderItem);
+        for (OrderItem item : newOrder.items()) {
+            insertItems.set(orderItem.orderId, id)
+                    .set(orderItem.productId, item.productId())
+                    .set(orderItem.productName, item.productName())
+                    .set(orderItem.quantity, item.quantity())
+                    .set(orderItem.unitPrice, item.unitPrice())
+                    .set(orderItem.totalPrice, item.totalPrice())
+                    .addBatch();
         }
-        return order;
-    }
-
-    public void delete(Order order) {
-        jdbcTemplate.update("DELETE FROM order_items WHERE order_id = ?", order.getId());
-        jdbcTemplate.update("DELETE FROM orders WHERE id = ?", order.getId());
-    }
-
-    private List<Order> queryOrders(String condition, Object... args) {
-        String sql = SELECT_ORDER_WITH_ITEMS + condition + " ORDER BY o.id, i.id";
-        ResultSetExtractor<List<Order>> extractor = resultSet -> {
-            Map<Long, Order> orders = new LinkedHashMap<>();
-            while (resultSet.next()) {
-                long orderId = resultSet.getLong("order_id");
-                Order order = orders.computeIfAbsent(orderId, ignored -> {
-                    Order created = new Order();
-                    created.setId(orderId);
-                    return created;
-                });
-                order.setCustomerName(resultSet.getString("customer_name"));
-                order.setStatus(orderStatusFromOrdinal(resultSet.getInt("status")));
-                order.setTotalAmount(resultSet.getBigDecimal("total_amount"));
-
-                long itemId = resultSet.getLong("item_id");
-                if (!resultSet.wasNull()) {
-                    OrderItem item = new OrderItem();
-                    item.setId(itemId);
-                    item.setOrder(order);
-                    item.setProductId(resultSet.getLong("product_id"));
-                    item.setProductName(resultSet.getString("product_name"));
-                    item.setQuantity(resultSet.getInt("quantity"));
-                    item.setUnitPrice(resultSet.getBigDecimal("unit_price"));
-                    item.setTotalPrice(resultSet.getBigDecimal("total_price"));
-                    order.getItems().add(item);
-                }
-            }
-            return new ArrayList<>(orders.values());
-        };
-        return jdbcTemplate.query(sql, extractor, args);
-    }
-
-    private Order.OrderStatus orderStatusFromOrdinal(int ordinal) {
-        Order.OrderStatus[] statuses = Order.OrderStatus.values();
-        if (ordinal < 0 || ordinal >= statuses.length) {
-            throw new DataRetrievalFailureException("Invalid order status ordinal: " + ordinal);
+        if (!newOrder.items().isEmpty()) {
+            insertItems.execute();
         }
-        return statuses[ordinal];
+        return newOrder.withId(id);
+    }
+
+    /**
+     * Переход статуса с проверкой текущего значения в том же UPDATE (optimistic check):
+     * два параллельных запроса не смогут, например, одновременно оплатить и отменить заказ.
+     *
+     * @return false, если заказа нет или его статус уже не {@code expected}
+     */
+    public boolean updateStatus(Long id, Order.Status expected, Order.Status newStatus) {
+        return queryFactory.update(order)
+                .set(order.status, newStatus.name())
+                .where(order.id.eq(id), order.status.eq(expected.name()))
+                .execute() > 0;
+    }
+
+    /**
+     * Позиции удаляются каскадно (ON DELETE CASCADE).
+     */
+    public boolean delete(Long id) {
+        return queryFactory.delete(order)
+                .where(order.id.eq(id))
+                .execute() > 0;
+    }
+
+    private SQLQuery<Tuple> selectOrders() {
+        return queryFactory.select(order.id, order.customerName, order.status, order.totalAmount)
+                .from(order);
+    }
+
+    private List<Order> withItems(List<Tuple> orderRows) {
+        if (orderRows.isEmpty()) {
+            return List.of();
+        }
+        List<Long> orderIds = orderRows.stream().map(row -> row.get(order.id)).toList();
+
+        // GroupBy-трансформация QueryDSL: плоский результат -> Map<orderId, List<OrderItem>>
+        Map<Long, List<OrderItem>> itemsByOrderId = queryFactory.from(orderItem)
+                .where(orderItem.orderId.in(orderIds))
+                .orderBy(orderItem.id.asc())
+                .transform(groupBy(orderItem.orderId).as(list(ORDER_ITEM)));
+
+        return orderRows.stream()
+                .map(row -> new Order(
+                        row.get(order.id),
+                        row.get(order.customerName),
+                        Order.Status.valueOf(row.get(order.status)),
+                        row.get(order.totalAmount),
+                        itemsByOrderId.getOrDefault(row.get(order.id), List.of())))
+                .toList();
+    }
+
+    private static Predicate toPredicate(OrderFilter filter) {
+        BooleanBuilder where = new BooleanBuilder();
+        if (StringUtils.hasText(filter.customerName())) {
+            where.and(order.customerName.containsIgnoreCase(filter.customerName().trim()));
+        }
+        if (filter.status() != null) {
+            where.and(order.status.eq(filter.status().name()));
+        }
+        return where;
     }
 }

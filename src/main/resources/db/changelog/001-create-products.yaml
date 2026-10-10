@@ -1,10 +1,12 @@
 databaseChangeLog:
   - changeSet:
       id: 001-create-products
-      author: rest-api
+      author: max
+      comment: Каталог товаров
       changes:
         - createTable:
             tableName: products
+            remarks: Каталог товаров
             columns:
               - column:
                   name: id
@@ -17,19 +19,23 @@ databaseChangeLog:
               - column:
                   name: name
                   type: VARCHAR(100)
+                  remarks: Название товара
                   constraints:
                     nullable: false
               - column:
                   name: description
                   type: VARCHAR(500)
+                  remarks: Описание товара, необязательное
               - column:
                   name: price
                   type: DECIMAL(19, 2)
+                  remarks: Текущая цена за единицу. DECIMAL, а не float, чтобы деньги считались без ошибок округления
                   constraints:
                     nullable: false
               - column:
                   name: stock_quantity
                   type: INTEGER
+                  remarks: Остаток на складе. Уменьшается при создании заказа, возвращается при отмене
                   constraints:
                     nullable: false
       rollback:

@@ -1,28 +1,24 @@
 package com.mixamus.restapi.entity;
 
 import java.math.BigDecimal;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-public class OrderItem {
+/**
+ * Позиция заказа хранит снимок названия и цены товара на момент покупки.
+ */
+public record OrderItem(
+        Long productId,
+        String productName,
+        Integer quantity,
+        BigDecimal unitPrice,
+        BigDecimal totalPrice
+) {
 
-    private Long id;
-
-    private Order order;
-
-    private Long productId;
-
-    private String productName;
-
-    private Integer quantity;
-
-    private BigDecimal unitPrice;
-
-    private BigDecimal totalPrice;
+    public static OrderItem of(Product product, int quantity) {
+        return new OrderItem(
+                product.id(),
+                product.name(),
+                quantity,
+                product.price(),
+                product.price().multiply(BigDecimal.valueOf(quantity)));
+    }
 }

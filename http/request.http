@@ -9,7 +9,7 @@
 # 4. Для другого адреса измените baseUrl ниже или выберите другой HTTP Client environment.
 #
 # Сценарий создания заказа требует сначала выполнить запрос создания товара.
-# Удаление заказа не возвращает списанный товар на склад.
+# Отмена или удаление PENDING-заказа возвращает товар на склад; оплаченный заказ удалить нельзя (409).
 
 @baseUrl = http://localhost:8080
 
@@ -73,17 +73,55 @@ Accept: application/json
 GET {{baseUrl}}/api/orders/{{orderId}}
 Accept: application/json
 
-### Получить список заказов
-GET {{baseUrl}}/api/orders
+### Получить список заказов (общее количество в заголовке X-Total-Count)
+GET {{baseUrl}}/api/orders?status=PENDING&page=0&size=20
+Accept: application/json
+
+### Поиск товаров: фильтры и пагинация
+GET {{baseUrl}}/api/products?name=keyboard&minPrice=10&inStock=true&page=0&size=20
 Accept: application/json
 
 ### Проверить остаток товара после создания заказа
 GET {{baseUrl}}/api/products/{{productId}}
 Accept: application/json
 
+### Отменить заказ (PENDING -> CANCELLED), товар возвращается на склад
+POST {{baseUrl}}/api/orders/{{orderId}}/cancel
+Accept: application/json
+
+### Повторная оплата отменённого заказа (ожидается 409 Conflict)
+POST {{baseUrl}}/api/orders/{{orderId}}/pay
+Accept: application/json
+
 ### Удалить заказ
-# Удаление заказа не восстанавливает остаток товара.
 DELETE {{baseUrl}}/api/orders/{{orderId}}
+Accept: application/json
+
+### Создать и оплатить ещё один заказ
+POST {{baseUrl}}/api/orders
+Content-Type: application/json
+Accept: application/json
+
+{
+  "customerName": "Alex Smith",
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 1
+    }
+  ]
+}
+
+> {%
+    client.global.set("paidOrderId", response.body.id);
+%}
+
+###
+POST {{baseUrl}}/api/orders/{{paidOrderId}}/pay
+Accept: application/json
+
+### Удалить оплаченный заказ (ожидается 409 Conflict)
+DELETE {{baseUrl}}/api/orders/{{paidOrderId}}
 Accept: application/json
 
 ### Удалить товар
@@ -113,4 +151,19 @@ Accept: application/json
 {
   "customerName": "Alex Smith",
   "items": []
+}
+
+### Проверка остатка: заказ больше, чем есть на складе (ожидается 409 Conflict)
+POST {{baseUrl}}/api/orders
+Content-Type: application/json
+Accept: application/json
+
+{
+  "customerName": "Alex Smith",
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 10000
+    }
+  ]
 }

@@ -1,32 +1,27 @@
 package com.mixamus.restapi.entity;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-public class Order {
+public record Order(
+        Long id,
+        String customerName,
+        Status status,
+        BigDecimal totalAmount,
+        List<OrderItem> items
+) {
 
-    public enum OrderStatus {
+    public enum Status {
         PENDING,
         PAID,
         CANCELLED
     }
 
-    private Long id;
+    public Order withId(Long id) {
+        return new Order(id, customerName, status, totalAmount, items);
+    }
 
-    private String customerName;
-
-    private OrderStatus status = OrderStatus.PENDING;
-
-    private BigDecimal totalAmount = BigDecimal.ZERO;
-
-    private List<OrderItem> items = new ArrayList<>();
+    public Order withStatus(Status status) {
+        return new Order(id, customerName, status, totalAmount, items);
+    }
 }
