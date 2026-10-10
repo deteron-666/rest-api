@@ -89,7 +89,7 @@ Liquibase применяет миграции схемы при запуске; 
 | --- | --- | --- |
 | `dev` | PostgreSQL `localhost:5432/postgres`, пользователь `postgres`, пароль `password`, схема `rest_api` | по умолчанию, локальная разработка |
 | `prod` | из переменных окружения `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | `SPRING_PROFILES_ACTIVE=prod` |
-| `test` | отдельная H2 в памяти для каждого тестового контекста | автотесты |
+| `test` | PostgreSQL 16 во временном Docker-контейнере (Testcontainers), нужен запущенный Docker | автотесты |
 
 В профиле `dev` схема `rest_api` создаётся автоматически при старте (`CREATE SCHEMA IF NOT EXISTS`), после чего Liquibase создаёт в ней таблицы приложения и свои служебные таблицы. Поднять PostgreSQL локально можно так:
 
@@ -102,3 +102,26 @@ docker run -d --name rest-api-postgres -e POSTGRES_PASSWORD=password -p 5432:543
 ```bash
 SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_USERNAME=orders DB_PASSWORD=secret java -jar target/rest-api-0.0.1-SNAPSHOT.jar
 ```
+## Анализ кода в SonarQube
+
+Для локальной проверки в проекте есть отдельный `docker-compose.sonar.yml`: SonarQube Community и своя PostgreSQL для него. С базой приложения он не связан.
+
+1. Запустить сервер (первый старт около минуты):
+
+   ```bash
+   docker compose -f docker-compose.sonar.yml up -d
+   ```
+
+2. Открыть <http://localhost:9000>, войти как `admin` / `admin` и сменить пароль.
+3. Создать токен: *My Account → Security → Generate Tokens*, тип *Global Analysis Token*.
+4. Запустить тесты и анализ:
+
+   ```bash
+   ./mvnw clean verify sonar:sonar -Dsonar.host.url=http://localhost:9000 -Dsonar.token=<токен>
+   ```
+
+   Результат: <http://localhost:9000/dashboard?id=com.mixamus%3Arest-api>.
+
+Настройки анализа лежат в `pom.xml` (свойства `sonar.*`): покрытие берётся из отчёта JaCoCo, а отдельные правила отключены для конкретных путей через `sonar.issue.ignore.multicriteria`. Эти исключения применяются только при анализе на сервере. SonarLint в IDE их не читает и продолжает подсвечивать такие места.
+
+Остановить сервер: `docker compose -f docker-compose.sonar.yml down`. Удалить вместе со всеми анализами и настройками: добавить `-v`.
