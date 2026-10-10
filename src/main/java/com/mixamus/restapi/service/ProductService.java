@@ -4,9 +4,14 @@ import com.mixamus.restapi.entity.Product;
 import com.mixamus.restapi.exception.NotFoundException;
 import com.mixamus.restapi.generated.model.ProductDto;
 import com.mixamus.restapi.repository.ProductFilter;
+import com.mixamus.restapi.repository.ProductPredicates;
 import com.mixamus.restapi.repository.ProductRepository;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,61 +27,57 @@ public class ProductService {
     private final ProductRepository productRepository;
 
     public PageResult<ProductDto> findAll(ProductFilter filter, int page, int size) {
-        return new PageResult<>(
-                productRepository.findAll(filter, (long) page * size, size).stream()
-                        .map(this::toDto)
-                        .toList(),
-                productRepository.count(filter));
+        Page<Product> products = productRepository.findAll(
+                ProductPredicates.matching(filter), PageRequest.of(page, size, Sort.by("id")));
+        return new PageResult<>(products.map(this::toDto).getContent(), products.getTotalElements());
     }
 
     public ProductDto findById(Long id) {
-        return productRepository.findById(id)
-                .map(this::toDto)
-                .orElseThrow(() -> notFound(id));
+        return toDto(findProduct(id));
     }
 
     @Transactional
     public ProductDto create(ProductDto request) {
-        return toDto(productRepository.insert(toEntity(null, request)));
+        Product product = new Product(request.getName().trim(), request.getDescription(),
+                money(request.getPrice()), request.getStockQuantity());
+        return toDto(productRepository.save(product));
     }
 
+    /**
+     * Изменения сохраняются при коммите транзакции (dirty checking), save() не нужен.
+     */
     @Transactional
     public ProductDto update(Long id, ProductDto request) {
-        Product product = toEntity(id, request);
-        if (!productRepository.update(product)) {
-            throw notFound(id);
-        }
+        Product product = findProduct(id);
+        product.update(request.getName().trim(), request.getDescription(),
+                money(request.getPrice()), request.getStockQuantity());
         return toDto(product);
     }
 
     @Transactional
     public void delete(Long id) {
-        if (!productRepository.delete(id)) {
-            throw notFound(id);
-        }
+        productRepository.delete(findProduct(id));
     }
 
-    private Product toEntity(Long id, ProductDto request) {
-        return new Product(
-                id,
-                request.getName().trim(),
-                request.getDescription(),
-                // Валидация гарантирует не больше 2 знаков после запятой, поэтому округление не нужно
-                request.getPrice().setScale(2, RoundingMode.UNNECESSARY),
-                request.getStockQuantity());
+    private Product findProduct(Long id) {
+        return productRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Product with id " + id + " not found"));
+    }
+
+    /**
+     * Валидация гарантирует не больше 2 знаков после запятой, поэтому округление не нужно.
+     */
+    private static BigDecimal money(BigDecimal value) {
+        return value.setScale(2, RoundingMode.UNNECESSARY);
     }
 
     private ProductDto toDto(Product product) {
         ProductDto dto = new ProductDto();
-        dto.setId(product.id());
-        dto.setName(product.name());
-        dto.setDescription(product.description());
-        dto.setPrice(product.price());
-        dto.setStockQuantity(product.stockQuantity());
+        dto.setId(product.getId());
+        dto.setName(product.getName());
+        dto.setDescription(product.getDescription());
+        dto.setPrice(product.getPrice());
+        dto.setStockQuantity(product.getStockQuantity());
         return dto;
-    }
-
-    private NotFoundException notFound(Long id) {
-        return new NotFoundException("Product with id " + id + " not found");
     }
 }

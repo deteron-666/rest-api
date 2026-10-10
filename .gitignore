@@ -30,3 +30,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Локальные секреты (токены, пароли) ###
+.env
+*.env
+/.env.example
+/sonar/.env.example

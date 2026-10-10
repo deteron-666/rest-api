@@ -13,6 +13,7 @@ import com.mixamus.restapi.generated.model.ProductDto;
 import com.mixamus.restapi.repository.OrderFilter;
 import com.mixamus.restapi.service.OrderService;
 import com.mixamus.restapi.service.ProductService;
+import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +22,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +43,9 @@ class PersistenceIntegrationTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     @BeforeEach
     void clearDatabase() {
@@ -136,6 +142,23 @@ class PersistenceIntegrationTests {
         assertEquals(stock, succeeded);
         assertEquals(0, productService.findById(product.getId()).getStockQuantity());
         assertEquals(stock, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM orders", Integer.class));
+    }
+
+    @Test
+    void orderListLoadsItemsWithoutNPlusOneQueries() {
+        ProductDto product = productService.create(product("Mouse", "10.00", 100));
+        for (int i = 0; i < 10; i++) {
+            orderService.create(order(item(product.getId(), 1), item(product.getId(), 2)));
+        }
+        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+
+        List<OrderDto> orders = orderService.findAll(OrderFilter.none(), 0, 5).items();
+
+        assertEquals(5, orders.size());
+        assertEquals(2, orders.getFirst().getItems().size());
+        // id страницы + заказы с позициями (JOIN FETCH) + count; без N+1 было бы 1 + 5 запросов на позиции
+        assertEquals(3, statistics.getPrepareStatementCount());
     }
 
     @Test

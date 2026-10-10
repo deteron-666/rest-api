@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-order-created-at-and-version
+      author: max
+      comment: >
+        created_at - момент создания заказа, нужен для отчётов за период.
+        version - счётчик версий для optimistic locking (JPA @Version): параллельные изменения
+        одного заказа (например, оплата и отмена одновременно) не затирают друг друга
+      changes:
+        - addColumn:
+            tableName: orders
+            columns:
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  remarks: Момент создания заказа
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  remarks: Версия строки для optimistic locking
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: orders
+            indexName: idx_orders_status_created_at
+            columns:
+              - column:
+                  name: status
+              - column:
+                  name: created_at
+      rollback:
+        - dropIndex:
+            tableName: orders
+            indexName: idx_orders_status_created_at
+        - dropColumn:
+            tableName: orders
+            columnName: version
+        - dropColumn:
+            tableName: orders
+            columnName: created_at

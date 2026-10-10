@@ -4,6 +4,19 @@ spring:
   profiles:
     # Локальный запуск без параметров использует PostgreSQL (профиль dev). В проде: SPRING_PROFILES_ACTIVE=prod
     default: dev
+  jpa:
+    # Сессия Hibernate не живёт до конца HTTP-запроса: всё нужное загружается в сервисе,
+    # и lazy-загрузка из контроллера/сериализатора не порождает скрытых запросов
+    open-in-view: false
+    hibernate:
+      # Схемой управляет Liquibase; Hibernate только проверяет, что сущности ей соответствуют
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Lazy-коллекции догружаются пачками по 100 id вместо отдельного запроса на каждую (защита от N+1)
+        default_batch_fetch_size: 100
+        jdbc:
+          time_zone: UTC
 server:
   port: 8080
 springdoc:
