@@ -111,7 +111,7 @@ SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_US
 | Где | Что это | Когда |
 | --- | --- | --- |
 | Локальный сервер в Docker | SonarQube Community из `docker-compose.sonar.yml` | попробовать, проверить настройки перед CI |
-| SonarQube Cloud | облачный сервис, ставить ничего не нужно | постоянный анализ в CI для команды |
+| SonarQube Cloud | облачный сервис, ставить ничего не нужно; **используется в проекте по умолчанию** | постоянный анализ, в том числе в CI |
 | SonarQube for IDE (SonarLint) | плагин IntelliJ IDEA | подсветка проблем прямо в редакторе |
 
 ### Что уже настроено в проекте
@@ -121,6 +121,8 @@ SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_US
 | Настройка | Зачем |
 | --- | --- |
 | `jacoco-maven-plugin` | отчёт о покрытии `target/site/jacoco/jacoco.xml`, формируется при `./mvnw test` |
+| `sonar.host.url`, `sonar.organization`, `sonar.projectKey` | анализ отправляется в SonarQube Cloud: организация `mixamus13`, проект `deteron-666_rest-api` |
+| токен | **не хранится в репозитории**, берётся из переменной окружения `SONAR_TOKEN` |
 | `sonar.coverage.jacoco.xmlReportPaths` | Sonar берёт покрытие из этого отчёта |
 | `lombok.config` → `lombok.addLombokGeneratedAnnotation` | код, сгенерированный Lombok, не учитывается в покрытии |
 | исключения JaCoCo и `sonar.coverage.exclusions` | сгенерированные классы (OpenAPI, QueryDSL), конфигурация и `main` не учитываются в покрытии |
@@ -145,6 +147,8 @@ SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_US
    ```bash
    SONAR_TOKEN=<токен> ./mvnw clean verify sonar:sonar -Dsonar.host.url=http://localhost:9000
    ```
+
+   `-Dsonar.host.url` перекрывает адрес SonarQube Cloud из `pom.xml`.
 
    Результат: <http://localhost:9000/dashboard?id=com.mixamus%3Arest-api>.
 
@@ -213,21 +217,32 @@ SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_US
 4. Для Maven-проекта с покрытием нужен анализ из CI, а не автоматический: *Administration → Analysis Method* → выключить **Automatic Analysis**. Автоматический анализ не умеет покрытие тестами для Java и конфликтует с анализом из CI.
 5. Создать токен: *My Account → Security → Generate Tokens*.
 
-**Запуск анализа с локальной машины**
+**Запуск анализа этого проекта**
+
+Адрес, организация и ключ проекта уже прописаны в `pom.xml`. Нужен только токен в переменной окружения `SONAR_TOKEN`:
 
 ```bash
-SONAR_TOKEN=<токен> ./mvnw clean verify sonar:sonar -Dsonar.host.url=https://sonarcloud.io -Dsonar.organization=<ключ_организации> -Dsonar.projectKey=<ключ_проекта>
+SONAR_TOKEN=<токен> ./mvnw clean verify sonar:sonar
 ```
+
+Результат: <https://sonarcloud.io/project/overview?id=deteron-666_rest-api>.
+
+Чтобы не вводить токен каждый раз, задайте переменную один раз:
+
+- **файл `.env` в корне проекта** — вписать токен в строку `SONAR_TOKEN=` (шаблон — `.env.example`). Maven сам `.env` не читает, поэтому перед запуском загрузите его в терминал:
+
+  ```bash
+  set -a && source .env && set +a && ./mvnw clean verify sonar:sonar
+  ```
+
+- **терминал macOS / Linux** — добавить в `~/.zshrc` (или `~/.bashrc`) строку `export SONAR_TOKEN=<токен>` и открыть новый терминал;
+- **IntelliJ IDEA** — *Settings → Build, Execution, Deployment → Build Tools → Maven → Runner → Environment variables* → `SONAR_TOKEN=<токен>`. Тогда анализ можно запускать из окна Maven (*Plugins → sonar → sonar:sonar*).
+
+Токен никогда не записывается в `pom.xml` и другие файлы репозитория: репозиторий публичный. Файл `.env` в `.gitignore`, в репозиторий попадает только шаблон `.env.example` без значений.
+
+Без токена анализ завершится ошибкой `Not authorized. Please check the 'sonar.token' property or the 'SONAR_TOKEN' environment variable`.
 
 Для организации в регионе US адрес другой: `https://sonarqube.us`.
-
-Организацию и ключ проекта можно один раз записать в `<properties>` в `pom.xml`, чтобы не передавать их в команде. Токен туда не записывается никогда:
-
-```xml
-<sonar.organization>ключ_организации</sonar.organization>
-<sonar.projectKey>ключ_проекта</sonar.projectKey>
-<sonar.host.url>https://sonarcloud.io</sonar.host.url>
-```
 
 **Анализ в GitHub Actions**
 
@@ -253,7 +268,7 @@ SONAR_TOKEN=<токен> ./mvnw clean verify sonar:sonar -Dsonar.host.url=https:
              java-version: '21'
              cache: maven
          # Docker на ubuntu-latest уже есть, поэтому тесты с Testcontainers работают
-         - run: ./mvnw -B clean verify sonar:sonar -Dsonar.host.url=https://sonarcloud.io -Dsonar.organization=<ключ_организации> -Dsonar.projectKey=<ключ_проекта>
+         - run: ./mvnw -B clean verify sonar:sonar
            env:
              SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
    ```

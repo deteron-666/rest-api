@@ -23,6 +23,14 @@
         <jacoco.version>0.8.15</jacoco.version>
         <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
 
+        <!-- SonarQube Cloud: проект deteron-666_rest-api в организации mixamus13 (Immortal).
+             Токен здесь НЕ указывается: сканер сам берёт его из переменной окружения SONAR_TOKEN,
+             поэтому он не попадает в репозиторий. Запуск: SONAR_TOKEN=<токен> ./mvnw clean verify sonar:sonar
+             Для локального сервера из docker-compose.sonar.yml: добавить -Dsonar.host.url=http://localhost:9000 -->
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.organization>mixamus13</sonar.organization>
+        <sonar.projectKey>deteron-666_rest-api</sonar.projectKey>
+
         <!-- Sonar: покрытие берётся из отчёта JaCoCo, где Lombok-код уже отфильтрован (@lombok.Generated, см. lombok.config) -->
         <sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
         <!-- Код из target/generated-sources (OpenAPI, QueryDSL) Sonar не анализирует: sonar.sources = src/main/java.
