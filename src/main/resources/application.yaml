@@ -4,6 +4,9 @@ spring:
   profiles:
     # Локальный запуск без параметров использует PostgreSQL (профиль dev). В проде: SPRING_PROFILES_ACTIVE=prod
     default: dev
+  liquibase:
+    # Root changelog: подключает changelog'и релизов (db/changelog/changelog-<версия>/)
+    change-log: classpath:db/changelog/changelog-root.yaml
   jpa:
     # Сессия Hibernate не живёт до конца HTTP-запроса: всё нужное загружается в сервисе,
     # и lazy-загрузка из контроллера/сериализатора не порождает скрытых запросов

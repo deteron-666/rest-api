@@ -1,0 +1,114 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+    Правила оформления кода проекта. Проверка: make checkstyle (или ./mvnw checkstyle:check),
+    также выполняется автоматически в каждой сборке (фаза validate) и роняет её при нарушениях.
+
+    Стиль: отступ 4 пробела, строка до 150 символов, без * в импортах.
+    Точечное исключение в коде: @SuppressWarnings("checkstyle:ИмяПроверки") с пояснением.
+-->
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- Позволяет отключать проверку в коде через @SuppressWarnings("checkstyle:...") -->
+    <module name="SuppressWarningsFilter"/>
+
+    <!-- Файл целиком -->
+    <module name="FileTabCharacter"/>
+    <module name="NewlineAtEndOfFile"/>
+    <module name="LineLength">
+        <property name="max" value="150"/>
+        <property name="ignorePattern" value="^(package|import) |https?://"/>
+    </module>
+
+    <module name="TreeWalker">
+        <module name="SuppressWarningsHolder"/>
+
+        <!-- Импорты -->
+        <module name="AvoidStarImport"/>
+        <module name="RedundantImport"/>
+        <module name="UnusedImports"/>
+
+        <!-- Именование -->
+        <module name="PackageName"/>
+        <module name="TypeName"/>
+        <module name="MethodName"/>
+        <module name="MemberName"/>
+        <module name="ParameterName"/>
+        <module name="LambdaParameterName"/>
+        <module name="LocalVariableName"/>
+        <module name="LocalFinalVariableName"/>
+        <module name="StaticVariableName"/>
+        <!-- private static final не проверяем: QueryDSL-идиома "private static final QProduct product = QProduct.product" -->
+        <module name="ConstantName">
+            <property name="applyToPrivate" value="false"/>
+        </module>
+
+        <!-- Фигурные скобки и блоки -->
+        <module name="NeedBraces"/>
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+        <!-- Пустой блок допустим, только если в нём есть комментарий, объясняющий почему -->
+        <module name="EmptyBlock">
+            <property name="option" value="text"/>
+        </module>
+        <module name="EmptyCatchBlock"/>
+        <module name="AvoidNestedBlocks">
+            <property name="allowInSwitchCase" value="true"/>
+        </module>
+
+        <!-- Пробелы -->
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+        </module>
+        <module name="WhitespaceAfter"/>
+        <module name="NoWhitespaceBefore"/>
+        <module name="NoWhitespaceAfter"/>
+        <module name="MethodParamPad"/>
+        <module name="ParenPad"/>
+        <module name="GenericWhitespace"/>
+        <module name="SingleSpaceSeparator"/>
+
+        <!-- Модификаторы и объявления -->
+        <module name="ModifierOrder"/>
+        <module name="RedundantModifier"/>
+        <module name="OneStatementPerLine"/>
+        <module name="MultipleVariableDeclarations"/>
+        <module name="ArrayTypeStyle"/>
+        <module name="UpperEll"/>
+
+        <!-- Типичные ошибки -->
+        <module name="EqualsHashCode"/>
+        <module name="StringLiteralEquality"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+        <module name="CovariantEquals"/>
+        <module name="EmptyStatement"/>
+        <module name="FallThrough"/>
+        <module name="MissingOverride"/>
+
+        <!-- Устройство классов и размер кода -->
+        <!-- Класс с main и @SpringBootApplication Spring создаёт сам, его конструктор скрывать нельзя -->
+        <module name="HideUtilityClassConstructor">
+            <property name="ignoreAnnotatedBy" value="SpringBootApplication"/>
+        </module>
+        <module name="FinalClass"/>
+        <module name="OneTopLevelClass"/>
+        <module name="OuterTypeFilename"/>
+        <module name="MethodLength">
+            <property name="max" value="80"/>
+        </module>
+        <module name="ParameterNumber">
+            <property name="max" value="8"/>
+            <property name="ignoreOverriddenMethods" value="true"/>
+        </module>
+    </module>
+</module>

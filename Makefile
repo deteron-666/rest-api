@@ -13,7 +13,7 @@ endif
 
 SONAR_COMPOSE := docker compose -f sonar/docker-compose.yml
 
-.PHONY: help build test run sonar sonar-local sonar-up sonar-down sonar-logs
+.PHONY: help build test checkstyle run sonar sonar-local sonar-up sonar-down sonar-logs
 
 help: ## Показать список команд
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  make %-12s %s\n", $$1, $$2}'
@@ -25,6 +25,9 @@ build: ## Собрать JAR без тестов
 
 test: ## Запустить все тесты (нужен запущенный Docker)
 	./mvnw clean verify
+
+checkstyle: ## Проверить оформление кода (правила в checkstyle/checkstyle.xml)
+	./mvnw checkstyle:check
 
 run: ## Запустить приложение (профиль dev, нужен PostgreSQL на localhost:5432)
 	./mvnw spring-boot:run

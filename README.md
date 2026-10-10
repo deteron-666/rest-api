@@ -39,7 +39,7 @@ REST API для управления каталогом товаров и зак
 Или запуск JAR после сборки:
 
 ```bash
-java -jar target/rest-api-0.0.1-SNAPSHOT.jar
+java -jar target/rest-api-1.1.0.jar
 ```
 
 По умолчанию приложение доступно на `http://localhost:8080`.
@@ -79,7 +79,23 @@ java -jar target/rest-api-0.0.1-SNAPSHOT.jar
 
 ## База данных
 
-Liquibase применяет миграции схемы при запуске; master changelog и миграции находятся в `src/main/resources/db/changelog`.
+Liquibase применяет миграции схемы при запуске. Структура миграций — по релизам, как
+рекомендует [документация Liquibase](https://docs.liquibase.com/secure/implementation-guide-5-1/set-up-your-changelog-structure):
+
+```
+src/main/resources/db/changelog/
+├── changelog-root.yaml              ← root changelog: только include релизов + проверка, что БД — PostgreSQL
+└── changelog-1.1.0/
+    ├── changelog-1.1.0.yaml         ← релиз 1.1.0: include миграций по порядку + метка отката tag 1.1.0
+    ├── 001-create-products.yaml
+    ├── ...
+    └── 006-order-created-at-and-version.yaml
+```
+
+Новая миграция — новый файл `NNN-описание.yaml` в папке текущего, ещё не выпущенного релиза и `include` в его `changelog-<версия>.yaml`. Имя папки
+релиза и метка отката совпадают с версией проекта в `pom.xml` (`<version>`). Для следующего релиза — новая папка, например `changelog-1.2.0/` с
+`changelog-1.2.0.yaml`, и её `include` в `changelog-root.yaml`. Применённые changeset'ы не меняются, не переименовываются и не переносятся: Liquibase
+узнаёт их по id, автору и пути к файлу. Правила подробно описаны в шапке `changelog-root.yaml`.
 
 Слой хранения: **Spring Data JPA (Hibernate) + QueryDSL JPA**. Схемой управляет Liquibase, Hibernate только проверяет соответствие сущностей таблицам (`ddl-auto: validate`). Простые операции идут через `JpaRepository`, поиск с фильтрами — через `QuerydslPredicateExecutor`, сложные запросы (пагинация с fetch join, отчёт с агрегатами и подзапросами) — через `JPAQueryFactory`. Подробный разбор с примерами — в [docs/querydsl.md](docs/querydsl.md).
 
@@ -100,8 +116,34 @@ docker run -d --name rest-api-postgres -e POSTGRES_PASSWORD=password -p 5432:543
 Пример запуска в профиле `prod`:
 
 ```bash
-SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_USERNAME=orders DB_PASSWORD=secret java -jar target/rest-api-0.0.1-SNAPSHOT.jar
+SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_USERNAME=orders DB_PASSWORD=secret java -jar target/rest-api-1.1.0.jar
 ```
+## Проверка оформления кода (Checkstyle)
+
+[Checkstyle](https://checkstyle.org) проверяет, что код оформлен по единым правилам: отступы, длина строк, фигурные скобки, именование, импорты. Правила лежат в `checkstyle/checkstyle.xml`.
+
+```bash
+make checkstyle
+```
+
+Проверка также выполняется **автоматически в начале каждой сборки** (`compile`, `test`, `verify`, `package`): при нарушении сборка падает со списком файлов, строк и причин. Проверяется только свой код (`src/main/java`, `src/test/java`), сгенерированные классы не проверяются.
+
+Основные правила:
+
+| Что | Правило |
+| --- | --- |
+| Отступы и пробелы | табы запрещены, пробелы вокруг операторов и `{`, без лишних пробелов в скобках |
+| Длина строки | не больше 150 символов (кроме `package`, `import` и ссылок) |
+| Импорты | без `*`, без неиспользуемых и повторяющихся |
+| Скобки | `{}` обязательны у `if`/`for`/`while`, даже для одной строки; пустой блок только с комментарием; пустой `catch` запрещён |
+| Именование | классы `UpperCamelCase`, методы и переменные `lowerCamelCase`, публичные константы `UPPER_SNAKE_CASE` |
+| Типичные ошибки | сравнение строк через `==`, `equals` без `hashCode`, проваливание в `switch`, отсутствие `@Override` |
+| Размер | метод не длиннее 80 строк, не больше 8 параметров |
+
+Точечное исключение в коде (редко и с пояснением): `@SuppressWarnings("checkstyle:ИмяПроверки") // причина`.
+
+В IntelliJ IDEA те же правила можно подключить плагином **CheckStyle-IDEA**: *Settings → Tools → Checkstyle* → `+` → файл `checkstyle/checkstyle.xml`. Тогда нарушения подсвечиваются прямо в редакторе.
+
 ## Анализ кода в SonarQube
 
 [SonarQube](https://www.sonarsource.com/products/sonarqube/) — статический анализатор: ищет баги (возможный NPE, незакрытые ресурсы), уязвимости, «запахи» кода (дублирование, сложность) и показывает покрытие тестами. Он не заменяет тесты и ревью, а снимает с них рутину. Его замечания — повод посмотреть на код, решение всегда за разработчиком.
@@ -123,23 +165,23 @@ make sonar                         # тесты + анализ в SonarQube Clou
 | `make sonar-up` / `make sonar-down` | запустить / остановить локальный SonarQube в Docker |
 | `make sonar-logs` | логи локального SonarQube |
 
-| Файл | Назначение |
-| --- | --- |
-| `sonar/.env` | **ваши токены**; в `.gitignore`, в репозиторий не попадает |
-| `sonar/.env.example` | шаблон `sonar/.env` без значений; тоже в `.gitignore` |
-| `sonar/sonar.sh` | загружает токены из `sonar/.env` и запускает тесты с анализом; его вызывают `make sonar` и `make sonar-local` |
-| `sonar/docker-compose.yml` | локальный SonarQube и PostgreSQL для него |
-| `Makefile` (в корне) | короткие команды |
+| Файл                        | Назначение                                                                                                    |
+|-----------------------------|---------------------------------------------------------------------------------------------------------------|
+| `sonar/.env`                | **ваши токены**; в `.gitignore`, в репозиторий не попадает                                                    |
+| `sonar/.env.example`        | шаблон `sonar/.env` без значений; тоже в `.gitignore`                                                         |
+| `sonar/sonar.sh`            | загружает токены из `sonar/.env` и запускает тесты с анализом; его вызывают `make sonar` и `make sonar-local` |
+| `docker/docker-compose.yml` | локальный SonarQube и PostgreSQL для него                                                                     |
+| `Makefile` (в корне)        | короткие команды                                                                                              |
 
 Переменные окружения, заданные до запуска (например, `SONAR_TOKEN` в CI), важнее значений из `sonar/.env`. Если Java не найдена в `PATH`, используется JDK по умолчанию из SDKMAN.
 
 Есть три способа пользоваться Sonar:
 
-| Где | Что это | Когда |
-| --- | --- | --- |
-| Локальный сервер в Docker | SonarQube Community из `sonar/docker-compose.yml` | попробовать, проверить настройки перед CI |
-| SonarQube Cloud | облачный сервис, ставить ничего не нужно; **используется в проекте по умолчанию** | постоянный анализ, в том числе в CI |
-| SonarQube for IDE (SonarLint) | плагин IntelliJ IDEA | подсветка проблем прямо в редакторе |
+| Где                           | Что это                                                                           | Когда                                     |
+|-------------------------------|-----------------------------------------------------------------------------------|-------------------------------------------|
+| Локальный сервер в Docker     | SonarQube Community из `docker/docker-compose.yml`                                | попробовать, проверить настройки перед CI |
+| SonarQube Cloud               | облачный сервис, ставить ничего не нужно; **используется в проекте по умолчанию** | постоянный анализ, в том числе в CI       |
+| SonarQube for IDE (SonarLint) | плагин IntelliJ IDEA                                                              | подсветка проблем прямо в редакторе       |
 
 ### Что уже настроено в проекте
 
@@ -159,7 +201,7 @@ make sonar                         # тесты + анализ в SonarQube Clou
 
 ### Локальный сервер в Docker
 
-`sonar/docker-compose.yml` поднимает SonarQube Community и свою PostgreSQL для него. С базой приложения он не связан.
+`docker/docker-compose.yml` поднимает SonarQube Community и свою PostgreSQL для него. С базой приложения он не связан.
 
 1. Запустить сервер (первый старт около минуты):
 

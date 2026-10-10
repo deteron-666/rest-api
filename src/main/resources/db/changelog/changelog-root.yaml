@@ -1,0 +1,24 @@
+# Root changelog: только подключает changelog'и релизов, собственных changeset'ов не содержит.
+# Структура по релизам (рекомендация Liquibase "Set up your changelog structure"):
+#   changelog-1.1.0/changelog-1.1.0.yaml — релиз 1.1.0, рядом файлы его миграций
+#   changelog-1.2.0/changelog-1.2.0.yaml — следующий релиз со своими миграциями и т.д.
+# Имя папки и метка tagDatabase совпадают с версией проекта в pom.xml (<version>).
+#
+# Правила:
+#  - применённый changeset НЕЛЬЗЯ менять: Liquibase сверяет контрольные суммы и не даст запустить приложение.
+#    Исправления — только новым changeset'ом в новом файле;
+#  - changeset идентифицируется по id + author + путь к файлу, поэтому применённые файлы нельзя
+#    переименовывать и переносить (иначе задать logicalFilePath со старым путём);
+#  - один файл = одно логическое изменение, имя NNN-краткое-описание.yaml, сквозная нумерация;
+#  - у каждого changeset'а есть comment и rollback;
+#  - в конце changelog'а релиза — changeset с tagDatabase для отката до релиза.
+databaseChangeLog:
+  - preConditions:
+      - onFail: HALT
+      - onFailMessage: Миграции рассчитаны только на PostgreSQL
+      - dbms:
+          type: postgresql
+
+  - include:
+      file: changelog-1.1.0/changelog-1.1.0.yaml
+      relativeToChangelogFile: true

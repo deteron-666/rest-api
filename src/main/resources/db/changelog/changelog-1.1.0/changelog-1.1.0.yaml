@@ -1,0 +1,30 @@
+# Релиз 1.1.0 (версия проекта в pom.xml): каталог товаров, заказы, позиции заказа.
+# Подключает миграции релиза в порядке применения и ставит метку 1.1.0 для отката:
+#   liquibase rollback --tag=1.1.0
+databaseChangeLog:
+  - include:
+      file: 001-create-products.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 002-create-orders.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 003-create-order-items.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 004-order-status-as-string.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 005-constraints-and-indexes.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 006-order-created-at-and-version.yaml
+      relativeToChangelogFile: true
+
+  - changeSet:
+      id: tag-1.1.0
+      author: max
+      comment: Метка релиза 1.1.0 — точка, до которой можно откатить схему
+      changes:
+        - tagDatabase:
+            tag: "1.1.0"

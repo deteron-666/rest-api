@@ -12,7 +12,7 @@
 
     <groupId>com.mixamus</groupId>
     <artifactId>rest-api</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.1.0</version>
     <name>rest-api</name>
     <description>rest-api</description>
 
@@ -21,6 +21,8 @@
         <openapi-generator.version>7.26.0</openapi-generator.version>
         <openfeign-querydsl.version>7.7</openfeign-querydsl.version>
         <jacoco.version>0.8.15</jacoco.version>
+        <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
+        <checkstyle.version>14.1.0</checkstyle.version>
         <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
 
         <!-- SonarQube Cloud: проект deteron-666_rest-api в организации mixamus13 (Immortal).
@@ -163,6 +165,43 @@
                                 <generateBuilders>true</generateBuilders>
                             </configOptions>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Проверка оформления кода по checkstyle/checkstyle.xml. Выполняется в фазе validate,
+                 то есть в начале любой сборки (compile, test, verify, package), и роняет её при нарушениях -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${maven-checkstyle-plugin.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>${checkstyle.version}</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <configLocation>checkstyle/checkstyle.xml</configLocation>
+                    <!-- Только свой код: сгенерированные классы в target/generated-sources не проверяем -->
+                    <sourceDirectories>
+                        <sourceDirectory>${project.basedir}/src/main/java</sourceDirectory>
+                    </sourceDirectories>
+                    <testSourceDirectories>
+                        <testSourceDirectory>${project.basedir}/src/test/java</testSourceDirectory>
+                    </testSourceDirectories>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                    <consoleOutput>true</consoleOutput>
+                    <failOnViolation>true</failOnViolation>
+                    <violationSeverity>warning</violationSeverity>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>checkstyle</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>
