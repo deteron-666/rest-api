@@ -34,8 +34,8 @@
         <sonar.issue.ignore.multicriteria.e1.ruleKey>java:S5411</sonar.issue.ignore.multicriteria.e1.ruleKey>
         <sonar.issue.ignore.multicriteria.e1.resourceKey>src/main/java/com/mixamus/restapi/repository/**</sonar.issue.ignore.multicriteria.e1.resourceKey>
 
-        <sonar.issue.ignore.multicriteria.e2.ruleKey>java:S5411</sonar.issue.ignore.multicriteria.e2.ruleKey>
-        <sonar.issue.ignore.multicriteria.e2.resourceKey>src/main/java/com/mixamus/restapi/service/**</sonar.issue.ignore.multicriteria.e2.resourceKey>
+        <sonar.issue.ignore.multicriteria.e2.ruleKey>java:S5778</sonar.issue.ignore.multicriteria.e2.ruleKey>
+        <sonar.issue.ignore.multicriteria.e2.resourceKey>src/test/java/com/mixamus/restapi/**</sonar.issue.ignore.multicriteria.e2.resourceKey>
     </properties>
 
     <dependencies>

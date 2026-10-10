@@ -104,7 +104,33 @@ SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_US
 ```
 ## Анализ кода в SonarQube
 
-Для локальной проверки в проекте есть отдельный `docker-compose.sonar.yml`: SonarQube Community и своя PostgreSQL для него. С базой приложения он не связан.
+[SonarQube](https://www.sonarsource.com/products/sonarqube/) — статический анализатор: ищет баги (возможный NPE, незакрытые ресурсы), уязвимости, «запахи» кода (дублирование, сложность) и показывает покрытие тестами. Он не заменяет тесты и ревью, а снимает с них рутину. Его замечания — повод посмотреть на код, решение всегда за разработчиком.
+
+Есть три способа им пользоваться:
+
+| Где | Что это | Когда |
+| --- | --- | --- |
+| Локальный сервер в Docker | SonarQube Community из `docker-compose.sonar.yml` | попробовать, проверить настройки перед CI |
+| SonarQube Cloud | облачный сервис, ставить ничего не нужно | постоянный анализ в CI для команды |
+| SonarQube for IDE (SonarLint) | плагин IntelliJ IDEA | подсветка проблем прямо в редакторе |
+
+### Что уже настроено в проекте
+
+Все настройки анализа — свойства `sonar.*` в `pom.xml`:
+
+| Настройка | Зачем |
+| --- | --- |
+| `jacoco-maven-plugin` | отчёт о покрытии `target/site/jacoco/jacoco.xml`, формируется при `./mvnw test` |
+| `sonar.coverage.jacoco.xmlReportPaths` | Sonar берёт покрытие из этого отчёта |
+| `lombok.config` → `lombok.addLombokGeneratedAnnotation` | код, сгенерированный Lombok, не учитывается в покрытии |
+| исключения JaCoCo и `sonar.coverage.exclusions` | сгенерированные классы (OpenAPI, QueryDSL), конфигурация и `main` не учитываются в покрытии |
+| `sonar.issue.ignore.multicriteria` | отключение отдельных правил для конкретных папок (см. ниже) |
+
+Код из `target/generated-sources` Sonar не анализирует: в анализ попадает только `src/main/java`.
+
+### Локальный сервер в Docker
+
+В проекте есть отдельный `docker-compose.sonar.yml`: SonarQube Community и своя PostgreSQL для него. С базой приложения он не связан.
 
 1. Запустить сервер (первый старт около минуты):
 
@@ -114,14 +140,122 @@ SPRING_PROFILES_ACTIVE=prod DB_URL=jdbc:postgresql://localhost:5432/orders DB_US
 
 2. Открыть <http://localhost:9000>, войти как `admin` / `admin` и сменить пароль.
 3. Создать токен: *My Account → Security → Generate Tokens*, тип *Global Analysis Token*.
-4. Запустить тесты и анализ:
+4. Запустить тесты и анализ (для тестов нужен запущенный Docker):
 
    ```bash
-   ./mvnw clean verify sonar:sonar -Dsonar.host.url=http://localhost:9000 -Dsonar.token=<токен>
+   SONAR_TOKEN=<токен> ./mvnw clean verify sonar:sonar -Dsonar.host.url=http://localhost:9000
    ```
 
    Результат: <http://localhost:9000/dashboard?id=com.mixamus%3Arest-api>.
 
-Настройки анализа лежат в `pom.xml` (свойства `sonar.*`): покрытие берётся из отчёта JaCoCo, а отдельные правила отключены для конкретных путей через `sonar.issue.ignore.multicriteria`. Эти исключения применяются только при анализе на сервере. SonarLint в IDE их не читает и продолжает подсвечивать такие места.
-
 Остановить сервер: `docker compose -f docker-compose.sonar.yml down`. Удалить вместе со всеми анализами и настройками: добавить `-v`.
+
+Токен передаётся через переменную окружения `SONAR_TOKEN`: так он не попадает в историю команд и логи CI. Класть токен в `pom.xml` или другие файлы репозитория нельзя.
+
+### Как читать результаты
+
+- **Quality Gate** (Passed / Failed) — итог проверки по порогам: нет новых багов и уязвимостей, покрытие нового кода не ниже заданного и т.д. Именно его обычно проверяют в CI и в пулл-реквестах.
+- **New Code / Overall Code** — замечания по новому коду и по всему проекту. Правило «Clean as You Code»: держать чистым новый код и не обязательно сразу чинить старый.
+- **Issues** — сами замечания с типом и важностью:
+  - *Bug*, *Vulnerability* — почти всегда стоит исправлять;
+  - *Code Smell* — про читаемость и поддержку, часть спорна, решать по ситуации;
+  - *Security Hotspot* — место для ручной проверки: посмотреть и отметить *Safe* или исправить.
+- **Coverage** — покрытие тестами по строкам и веткам, **Duplications** — повторяющийся код.
+
+Что делать с замечанием, от лучшего к худшему:
+
+1. Исправить код.
+2. Если правило не подходит команде в целом — отключить его в Quality Profile на сервере.
+3. Если правило не подходит в определённой папке — исключить его для этого пути (см. ниже).
+4. Единичный случай — закрыть в интерфейсе Sonar как *Accepted* или *False Positive* с комментарием.
+5. Редкое исключение, которое должно быть видно в коде, — `@SuppressWarnings("java:Sxxxx") // причина`. Не используйте `// NOSONAR`: он глушит все правила на строке.
+
+### Исключение правила для папки
+
+В `<properties>` в `pom.xml` (ключи критериев `e1`, `e2` — произвольные имена):
+
+```xml
+<sonar.issue.ignore.multicriteria>e1,e2</sonar.issue.ignore.multicriteria>
+
+<sonar.issue.ignore.multicriteria.e1.ruleKey>java:S5411</sonar.issue.ignore.multicriteria.e1.ruleKey>
+<sonar.issue.ignore.multicriteria.e1.resourceKey>src/main/java/com/mixamus/restapi/repository/**</sonar.issue.ignore.multicriteria.e1.resourceKey>
+
+<sonar.issue.ignore.multicriteria.e2.ruleKey>java:S5411</sonar.issue.ignore.multicriteria.e2.ruleKey>
+<sonar.issue.ignore.multicriteria.e2.resourceKey>src/main/java/com/mixamus/restapi/service/**</sonar.issue.ignore.multicriteria.e2.resourceKey>
+```
+
+- `resourceKey` — путь от корня проекта (модуля): `**` — любые вложенные папки, `*` — любые символы внутри одной папки. В одном критерии один шаблон; для второй папки нужен второй критерий.
+- Исключения из `pom.xml` работают **только при анализе на сервере** через Maven. SonarLint в IDE их не видит и продолжает подсвечивать такие места.
+- Значение из `pom.xml` **заменяет** список исключений, заданный в настройках проекта на сервере, а не дополняет его. Если на сервере уже есть исключения, перенесите их в `pom.xml`.
+- Исключение действует и на будущий код в этой папке, поэтому пути стоит делать как можно уже.
+
+### SonarQube for IDE (SonarLint) в IntelliJ IDEA
+
+1. Установить плагин: *Settings → Plugins → Marketplace* → **SonarQube for IDE**.
+2. Без настройки плагин работает **автономно**: подсвечивает проблемы по встроенному набору правил.
+3. Чтобы правила и решения по замечаниям совпадали с сервером, включите **Connected Mode**:
+   1. *Settings → Tools → SonarQube for IDE → Connections* → `+`;
+   2. выбрать *SonarQube Server* (свой сервер, например `http://localhost:9000`) или *SonarQube Cloud*;
+   3. указать **пользовательский** токен (*My Account → Security*, тип *User Token*), для облака — ещё организацию;
+   4. *Settings → Tools → SonarQube for IDE → Project Settings* → **Bind project** → выбрать подключение и проект на сервере.
+
+В Connected Mode плагин берёт правила и исключения из **настроек проекта на сервере**. Исключения из `pom.xml` и локальное отключение правил в этом режиме не действуют. Чтобы подтянуть изменения с сервера сразу: *Connections* → **Update**.
+
+### SonarQube Cloud (облако)
+
+[SonarQube Cloud](https://sonarcloud.io) (раньше назывался SonarCloud) — тот же анализ как сервис: свой сервер поднимать не нужно, анализ запускается из CI. Для публичных репозиториев он бесплатен, для приватных есть ограничения бесплатного тарифа и платные тарифы, актуальные условия смотрите на [странице цен](https://www.sonarsource.com/plans-and-pricing/sonarcloud/).
+
+**Регистрация и проект**
+
+1. Открыть <https://sonarcloud.io> → **Log in**. Отдельной регистрации по почте нет: вход через аккаунт **GitHub**, **GitLab**, **Bitbucket** или **Azure DevOps**, где лежит репозиторий.
+2. Создать **организацию**: *+ → Create new organization* → импортировать организацию или личный аккаунт из GitHub (GitLab и т.д.) и выбрать тариф. Запомнить **ключ организации** (*Organization Key*).
+3. Добавить проект: *+ → Analyze new project* → выбрать репозиторий. Запомнить **ключ проекта** (*Project Key*, обычно `<владелец>_<репозиторий>`).
+4. Для Maven-проекта с покрытием нужен анализ из CI, а не автоматический: *Administration → Analysis Method* → выключить **Automatic Analysis**. Автоматический анализ не умеет покрытие тестами для Java и конфликтует с анализом из CI.
+5. Создать токен: *My Account → Security → Generate Tokens*.
+
+**Запуск анализа с локальной машины**
+
+```bash
+SONAR_TOKEN=<токен> ./mvnw clean verify sonar:sonar -Dsonar.host.url=https://sonarcloud.io -Dsonar.organization=<ключ_организации> -Dsonar.projectKey=<ключ_проекта>
+```
+
+Для организации в регионе US адрес другой: `https://sonarqube.us`.
+
+Организацию и ключ проекта можно один раз записать в `<properties>` в `pom.xml`, чтобы не передавать их в команде. Токен туда не записывается никогда:
+
+```xml
+<sonar.organization>ключ_организации</sonar.organization>
+<sonar.projectKey>ключ_проекта</sonar.projectKey>
+<sonar.host.url>https://sonarcloud.io</sonar.host.url>
+```
+
+**Анализ в GitHub Actions**
+
+1. В репозитории GitHub: *Settings → Secrets and variables → Actions → New repository secret* → `SONAR_TOKEN` со значением токена.
+2. Добавить файл `.github/workflows/sonar.yml`:
+
+   ```yaml
+   name: SonarQube Cloud
+   on:
+     push:
+       branches: [main]
+     pull_request:
+   jobs:
+     analyze:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+           with:
+             fetch-depth: 0  # полная история нужна, чтобы Sonar отличал новый код от старого
+         - uses: actions/setup-java@v4
+           with:
+             distribution: temurin
+             java-version: '21'
+             cache: maven
+         # Docker на ubuntu-latest уже есть, поэтому тесты с Testcontainers работают
+         - run: ./mvnw -B clean verify sonar:sonar -Dsonar.host.url=https://sonarcloud.io -Dsonar.organization=<ключ_организации> -Dsonar.projectKey=<ключ_проекта>
+           env:
+             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+   ```
+
+После этого результаты анализа появляются в SonarQube Cloud при каждом пуше в `main`, а в пулл-реквестах — статус Quality Gate и комментарии с замечаниями.
