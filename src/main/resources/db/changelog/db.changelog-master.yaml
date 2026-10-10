@@ -9,3 +9,5 @@ databaseChangeLog:
       file: db/changelog/004-order-status-as-string.yaml
   - include:
       file: db/changelog/005-constraints-and-indexes.yaml
+  - include:
+      file: db/changelog/006-order-created-at-and-version.yaml

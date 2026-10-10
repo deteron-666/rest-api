@@ -28,8 +28,6 @@
         <!-- Код из target/generated-sources (OpenAPI, QueryDSL) Sonar не анализирует: sonar.sources = src/main/java.
              Конфигурация и точка входа приложения не учитываются в покрытии -->
         <sonar.coverage.exclusions>**/RestApiApplication.java,**/config/**</sonar.coverage.exclusions>
-        <!-- Временная H2-база, в которую Liquibase накатывает миграции, чтобы QueryDSL сгенерировал по ней Q-классы -->
-        <querydsl.codegen.jdbc-url>jdbc:h2:file:${project.build.directory}/querydsl-codegen/db;MODE=PostgreSQL;DATABASE_TO_UPPER=false</querydsl.codegen.jdbc-url>
     </properties>
 
     <dependencies>
@@ -39,7 +37,7 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -51,12 +49,7 @@
         </dependency>
         <dependency>
             <groupId>io.github.openfeign.querydsl</groupId>
-            <artifactId>querydsl-sql</artifactId>
-            <version>${openfeign-querydsl.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.openfeign.querydsl</groupId>
-            <artifactId>querydsl-sql-spring</artifactId>
+            <artifactId>querydsl-jpa</artifactId>
             <version>${openfeign-querydsl.version}</version>
         </dependency>
         <dependency>
@@ -109,6 +102,19 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <!-- Генерирует Q-классы (QProduct, QOrder, QOrderItem) по классам @Entity -->
+                        <path>
+                            <groupId>io.github.openfeign.querydsl</groupId>
+                            <artifactId>querydsl-apt</artifactId>
+                            <version>${openfeign-querydsl.version}</version>
+                            <classifier>jpa</classifier>
+                        </path>
+                        <path>
+                            <groupId>jakarta.persistence</groupId>
+                            <artifactId>jakarta.persistence-api</artifactId>
+                            <version>${jakarta-persistence.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
@@ -152,6 +158,8 @@
                     <excludes>
                         <!-- Классы, сгенерированные OpenAPI Generator и QueryDSL, не наш код -->
                         <exclude>com/mixamus/restapi/generated/**</exclude>
+                        <!-- Q-классы, сгенерированные QueryDSL APT по сущностям -->
+                        <exclude>com/mixamus/restapi/entity/Q*.class</exclude>
                         <exclude>com/mixamus/restapi/RestApiApplication.class</exclude>
                         <exclude>com/mixamus/restapi/config/**</exclude>
                     </excludes>
@@ -171,93 +179,6 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>
-            <!-- 0. Удаляем временную базу от прошлой сборки, чтобы миграции всегда накатывались с нуля -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-clean-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>querydsl-codegen-reset-db</id>
-                        <phase>initialize</phase>
-                        <goals>
-                            <goal>clean</goal>
-                        </goals>
-                        <configuration>
-                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
-                            <filesets>
-                                <fileset>
-                                    <directory>${project.build.directory}/querydsl-codegen</directory>
-                                </fileset>
-                            </filesets>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <!-- 1. Накатываем Liquibase-миграции на временную H2-базу (фаза generate-sources) -->
-            <plugin>
-                <groupId>org.liquibase</groupId>
-                <artifactId>liquibase-maven-plugin</artifactId>
-                <version>${liquibase.version}</version>
-                <executions>
-                    <execution>
-                        <id>querydsl-codegen-schema</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>update</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <changeLogDirectory>${project.basedir}/src/main/resources</changeLogDirectory>
-                    <changeLogFile>db/changelog/db.changelog-master.yaml</changeLogFile>
-                    <driver>org.h2.Driver</driver>
-                    <url>${querydsl.codegen.jdbc-url}</url>
-                    <username>sa</username>
-                    <password>codegen</password>
-                    <promptOnNonLocalDatabase>false</promptOnNonLocalDatabase>
-                </configuration>
-                <dependencies>
-                    <dependency>
-                        <groupId>com.h2database</groupId>
-                        <artifactId>h2</artifactId>
-                        <version>${h2.version}</version>
-                    </dependency>
-                </dependencies>
-            </plugin>
-            <!-- 2. Читаем метаданные этой базы и генерируем типобезопасные Q-классы таблиц -->
-            <plugin>
-                <groupId>io.github.openfeign.querydsl</groupId>
-                <artifactId>querydsl-maven-plugin</artifactId>
-                <version>${openfeign-querydsl.version}</version>
-                <executions>
-                    <execution>
-                        <id>querydsl-codegen</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>export</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <jdbcDriver>org.h2.Driver</jdbcDriver>
-                    <jdbcUrl>${querydsl.codegen.jdbc-url}</jdbcUrl>
-                    <jdbcUser>sa</jdbcUser>
-                    <jdbcPassword>codegen</jdbcPassword>
-                    <schemaPattern>PUBLIC</schemaPattern>
-                    <tableNamePattern>products,orders,order_items</tableNamePattern>
-                    <packageName>com.mixamus.restapi.generated.querydsl</packageName>
-                    <targetFolder>${project.build.directory}/generated-sources/querydsl</targetFolder>
-                    <namePrefix>Q</namePrefix>
-                    <exportBeans>false</exportBeans>
-                </configuration>
-                <dependencies>
-                    <dependency>
-                        <groupId>com.h2database</groupId>
-                        <artifactId>h2</artifactId>
-                        <version>${h2.version}</version>
-                    </dependency>
-                </dependencies>
             </plugin>
         </plugins>
     </build>

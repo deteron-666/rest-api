@@ -85,6 +85,14 @@ Accept: application/json
 GET {{baseUrl}}/api/products/{{productId}}
 Accept: application/json
 
+### Отчёт: топ товаров по выручке (по умолчанию PENDING и PAID заказы)
+GET {{baseUrl}}/api/reports/product-sales?from=2020-01-01T00:00:00Z&limit=10
+Accept: application/json
+
+### Отчёт только по оплаченным заказам с выручкой от 100
+GET {{baseUrl}}/api/reports/product-sales?status=PAID&minRevenue=100
+Accept: application/json
+
 ### Отменить заказ (PENDING -> CANCELLED), товар возвращается на склад
 POST {{baseUrl}}/api/orders/{{orderId}}/cancel
 Accept: application/json

@@ -18,7 +18,7 @@ REST API для управления каталогом товаров и зак
 ./mvnw clean package
 ```
 
-При сборке Maven Wrapper загрузит Maven 3.9.16, если он ещё не установлен локально. OpenAPI Generator создаст Java-модели и интерфейсы контроллеров из `src/main/resources/openapi/openapi.yaml`, а QueryDSL — Q-классы таблиц по Liquibase-миграциям. Сгенерированные файлы помещаются в `target/generated-sources` и не требуют ручного создания. В IntelliJ IDEA после первой сборки выполните *Maven → Reload Project*, чтобы IDE увидела эти каталоги.
+При сборке Maven Wrapper загрузит Maven 3.9.16, если он ещё не установлен локально. OpenAPI Generator создаст Java-модели и интерфейсы контроллеров из `src/main/resources/openapi/openapi.yaml`, а QueryDSL APT — Q-классы по JPA-сущностям. Сгенерированные файлы помещаются в `target/generated-sources` и не требуют ручного создания. В IntelliJ IDEA после первой сборки выполните *Maven → Reload Project*, чтобы IDE увидела эти каталоги.
 
 ## Тесты
 
@@ -65,6 +65,7 @@ java -jar target/rest-api-0.0.1-SNAPSHOT.jar
 | `POST` | `/api/orders/{orderId}/pay` | Оплатить заказ (`PENDING` → `PAID`) |
 | `POST` | `/api/orders/{orderId}/cancel` | Отменить заказ (`PENDING` → `CANCELLED`), вернуть товар на склад |
 | `DELETE` | `/api/orders/{orderId}` | Удалить заказ (`PENDING` или `CANCELLED`; для `PENDING` товар возвращается на склад) |
+| `GET` | `/api/reports/product-sales` | Топ товаров по выручке за период: продано единиц, число заказов, выручка, средняя цена, доля в выручке, текущий остаток |
 
 Списки поддерживают фильтры и пагинацию, общее число найденных записей возвращается в заголовке `X-Total-Count`:
 
@@ -80,7 +81,7 @@ java -jar target/rest-api-0.0.1-SNAPSHOT.jar
 
 Liquibase применяет миграции схемы при запуске; master changelog и миграции находятся в `src/main/resources/db/changelog`.
 
-Слой хранения построен на [QueryDSL SQL](docs/querydsl.md): типобезопасные запросы поверх JDBC и Spring-транзакций. Q-классы таблиц генерируются при сборке по схеме, которую строят те же Liquibase-миграции. Подробнее о том, как это работает и чем полезно, — в [docs/querydsl.md](docs/querydsl.md).
+Слой хранения: **Spring Data JPA (Hibernate) + QueryDSL JPA**. Схемой управляет Liquibase, Hibernate только проверяет соответствие сущностей таблицам (`ddl-auto: validate`). Простые операции идут через `JpaRepository`, поиск с фильтрами — через `QuerydslPredicateExecutor`, сложные запросы (пагинация с fetch join, отчёт с агрегатами и подзапросами) — через `JPAQueryFactory`. Подробный разбор с примерами — в [docs/querydsl.md](docs/querydsl.md).
 
 ### Профили
 

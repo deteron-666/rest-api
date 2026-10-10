@@ -3,18 +3,15 @@ package com.mixamus.restapi.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.mixamus.restapi.entity.Order;
-import com.mixamus.restapi.entity.OrderItem;
 import com.mixamus.restapi.entity.Product;
 import com.mixamus.restapi.exception.ConflictException;
 import com.mixamus.restapi.exception.InsufficientStockException;
+import com.mixamus.restapi.exception.NotFoundException;
 import com.mixamus.restapi.generated.model.OrderDto;
 import com.mixamus.restapi.generated.model.OrderItemDto;
 import com.mixamus.restapi.generated.model.OrderStatus;
@@ -23,18 +20,16 @@ import com.mixamus.restapi.repository.ProductRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTest {
-
-    private static final Product KEYBOARD = new Product(1L, "Keyboard", null, new BigDecimal("50.00"), 10);
-    private static final Product MOUSE = new Product(2L, "Mouse", null, new BigDecimal("20.00"), 10);
 
     @Mock
     private OrderRepository orderRepository;
@@ -46,17 +41,17 @@ class OrderServiceTest {
     private OrderService orderService;
 
     @Test
-    void createReservesSummedQuantitiesInAscendingProductOrder() {
-        when(productRepository.findAllByIds(any())).thenReturn(List.of(MOUSE, KEYBOARD));
-        when(productRepository.decreaseStock(anyLong(), anyInt())).thenReturn(true);
-        when(orderRepository.insert(any())).thenAnswer(invocation -> invocation.<Order>getArgument(0).withId(7L));
+    void createLocksProductsDecreasesStockAndCalculatesTotal() {
+        Product keyboard = product(1L, "Keyboard", "50.00", 10);
+        Product mouse = product(2L, "Mouse", "20.00", 10);
+        when(productRepository.findAllByIdForUpdate(Set.of(1L, 2L))).thenReturn(List.of(keyboard, mouse));
+        when(orderRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         OrderDto created = orderService.create(new OrderDto(" Customer ", List.of(
                 new OrderItemDto(2L, 1), new OrderItemDto(1L, 2), new OrderItemDto(2L, 3))));
 
-        InOrder reservations = inOrder(productRepository);
-        reservations.verify(productRepository).decreaseStock(1L, 2);
-        reservations.verify(productRepository).decreaseStock(2L, 4);
+        assertEquals(8, keyboard.getStockQuantity());
+        assertEquals(6, mouse.getStockQuantity());
         assertEquals("Customer", created.getCustomerName());
         assertEquals(OrderStatus.PENDING, created.getStatus());
         assertEquals(new BigDecimal("180.00"), created.getTotalAmount());
@@ -65,44 +60,56 @@ class OrderServiceTest {
 
     @Test
     void createFailsWithoutSavingWhenStockIsInsufficient() {
-        when(productRepository.findAllByIds(any())).thenReturn(List.of(KEYBOARD));
-        when(productRepository.decreaseStock(1L, 11)).thenReturn(false);
+        when(productRepository.findAllByIdForUpdate(Set.of(1L)))
+                .thenReturn(List.of(product(1L, "Keyboard", "50.00", 10)));
 
         assertThrows(InsufficientStockException.class,
                 () -> orderService.create(new OrderDto("Customer", List.of(new OrderItemDto(1L, 11)))));
-        verify(orderRepository, never()).insert(any());
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void createFailsWhenProductDoesNotExist() {
+        when(productRepository.findAllByIdForUpdate(Set.of(1L))).thenReturn(List.of());
+
+        assertThrows(NotFoundException.class,
+                () -> orderService.create(new OrderDto("Customer", List.of(new OrderItemDto(1L, 1)))));
     }
 
     @Test
     void cancelReleasesReservedStock() {
-        when(orderRepository.findById(5L)).thenReturn(Optional.of(pendingOrder()));
-        when(orderRepository.updateStatus(5L, Order.Status.PENDING, Order.Status.CANCELLED)).thenReturn(true);
+        Product keyboard = product(1L, "Keyboard", "50.00", 10);
+        Order order = order(keyboard, 2);
+        when(orderRepository.findWithItemsById(5L)).thenReturn(Optional.of(order));
+        when(productRepository.findAllByIdForUpdate(Set.of(1L))).thenReturn(List.of(keyboard));
 
         OrderDto cancelled = orderService.cancel(5L);
 
         assertEquals(OrderStatus.CANCELLED, cancelled.getStatus());
-        verify(productRepository).increaseStock(1L, 2);
+        assertEquals(12, keyboard.getStockQuantity());
     }
 
     @Test
-    void paidOrderCannotBeDeleted() {
-        when(orderRepository.findById(5L)).thenReturn(Optional.of(pendingOrder().withStatus(Order.Status.PAID)));
+    void paidOrderCannotBeDeletedOrCancelled() {
+        Order order = order(product(1L, "Keyboard", "50.00", 10), 2);
+        order.pay();
+        when(orderRepository.findWithItemsById(5L)).thenReturn(Optional.of(order));
 
         assertThrows(ConflictException.class, () -> orderService.delete(5L));
-        verify(orderRepository, never()).delete(anyLong());
-        verify(productRepository, never()).increaseStock(anyLong(), anyInt());
+        assertThrows(ConflictException.class, () -> orderService.cancel(5L));
+        verify(orderRepository, never()).delete(any());
     }
 
-    @Test
-    void concurrentStatusChangeIsReportedAsConflict() {
-        when(orderRepository.findById(5L)).thenReturn(Optional.of(pendingOrder()));
-        when(orderRepository.updateStatus(5L, Order.Status.PENDING, Order.Status.PAID)).thenReturn(false);
-
-        assertThrows(ConflictException.class, () -> orderService.pay(5L));
+    private static Product product(Long id, String name, String price, int stock) {
+        Product product = new Product(name, null, new BigDecimal(price), stock);
+        ReflectionTestUtils.setField(product, "id", id);
+        return product;
     }
 
-    private Order pendingOrder() {
-        return new Order(5L, "Customer", Order.Status.PENDING, new BigDecimal("100.00"),
-                List.of(OrderItem.of(KEYBOARD, 2)));
+    private static Order order(Product product, int quantity) {
+        Order order = new Order("Customer");
+        order.addItem(product, quantity);
+        ReflectionTestUtils.setField(order, "id", 5L);
+        return order;
     }
 }
