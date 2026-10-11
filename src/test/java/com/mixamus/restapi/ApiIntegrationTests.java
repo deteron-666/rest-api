@@ -1,5 +1,18 @@
 package com.mixamus.restapi;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -9,19 +22,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
 @ActiveProfiles("test")
 @SpringBootTest
@@ -311,6 +311,42 @@ class ApiIntegrationTests {
         expectStock(productId, 2);
     }
 
+    @Test
+    void productUpdateWithStaleVersionDoesNotOverwriteReservedStock() throws Exception {
+        long productId = createProduct("Mouse", "25.00", 10);
+        mockMvc.perform(get("/api/products/{productId}", productId))
+                .andExpect(jsonPath("$.version").value(0));
+
+        // Клиент прочитал товар с версией 0, а затем заказ зарезервировал 3 шт. и изменил версию
+        createOrder(productId, 3);
+
+        mockMvc.perform(put("/api/products/{productId}", productId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson("Wireless mouse", "25.00", 10, 0)))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+        expectStock(productId, 7);
+
+        mockMvc.perform(put("/api/products/{productId}", productId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson("Wireless mouse", "25.00", 7, 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Wireless mouse"))
+                .andExpect(jsonPath("$.version").value(2));
+    }
+
+    @Test
+    void orderWithNullItemIsRejectedWithBadRequest() throws Exception {
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"customerName": "Customer", "items": [null]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.errors['items[0]']").exists());
+    }
+
     private void expectBadProduct(String json, String field) throws Exception {
         mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -352,6 +388,12 @@ class ApiIntegrationTests {
         return """
                 {"name": "%s", "price": %s, "stockQuantity": %d}
                 """.formatted(name, price, stockQuantity);
+    }
+
+    private String productJson(String name, String price, int stockQuantity, long version) {
+        return """
+                {"name": "%s", "price": %s, "stockQuantity": %d, "version": %d}
+                """.formatted(name, price, stockQuantity, version);
     }
 
     private String orderJson(long productId, int quantity) {

@@ -20,6 +20,9 @@ databaseChangeLog:
   - include:
       file: 006-order-created-at-and-version.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 007-product-version.yaml
+      relativeToChangelogFile: true
 
   - changeSet:
       id: tag-1.1.0

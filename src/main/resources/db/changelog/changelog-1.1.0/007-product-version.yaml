@@ -1,0 +1,22 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-product-version
+      author: max
+      comment: >
+        version - счётчик версий товара для optimistic locking (JPA @Version). Остаток меняют и заказы,
+        и PUT товара: без версии PUT, прочитавший товар до списания, записал бы поверх него старый остаток
+      changes:
+        - addColumn:
+            tableName: products
+            columns:
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  remarks: Версия строки для optimistic locking
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            tableName: products
+            columnName: version

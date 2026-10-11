@@ -11,11 +11,11 @@ import com.querydsl.core.types.dsl.StringExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.JPQLSubQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Read-only запросы для отчётов. Возвращают проекции, а не сущности: в отчёте нечего изменять,
@@ -32,8 +32,7 @@ public class SalesReportRepository {
      * JOIN, динамический WHERE, GROUP BY с агрегатами, HAVING, сортировка по агрегату,
      * некоррелированный и коррелированный подзапросы в SELECT.
      * <pre>
-     * SELECT i.productId, max(i.productName), sum(i.quantity), count(distinct o.id),
-     *        sum(i.totalPrice), avg(i.unitPrice),
+     * SELECT i.productId, max(i.productName), sum(i.quantity), count(distinct o.id), sum(i.totalPrice),
      *        (SELECT sum(ti.totalPrice) FROM OrderItem ti JOIN ti.order tor WHERE &lt;тот же фильтр&gt;),
      *        (SELECT p.stockQuantity FROM Product p WHERE p.id = i.productId)
      * FROM OrderItem i JOIN i.order o
@@ -54,7 +53,6 @@ public class SalesReportRepository {
         NumberExpression<Long> unitsSold = item.quantity.sumLong();
         NumberExpression<Long> ordersCount = order.id.countDistinct();
         NumberExpression<BigDecimal> revenue = item.totalPrice.sumBigDecimal();
-        NumberExpression<Double> averageUnitPrice = item.unitPrice.avg();
 
         // Некоррелированный подзапрос: общая выручка с тем же фильтром, но по своим алиасам
         QOrderItem totalItem = new QOrderItem("totalItem");
@@ -74,8 +72,7 @@ public class SalesReportRepository {
                 .where(product.id.eq(item.productId));
 
         List<Tuple> rows = queryFactory
-                .select(item.productId, productName, unitsSold, ordersCount,
-                        revenue, averageUnitPrice, totalRevenue, currentStock)
+                .select(item.productId, productName, unitsSold, ordersCount, revenue, totalRevenue, currentStock)
                 .from(item)
                 .join(item.order, order)
                 .where(matching(order, filter))
@@ -92,7 +89,6 @@ public class SalesReportRepository {
                         row.get(unitsSold),
                         row.get(ordersCount),
                         row.get(revenue),
-                        BigDecimal.valueOf(row.get(averageUnitPrice)).setScale(2, RoundingMode.HALF_UP),
                         row.get(totalRevenue),
                         row.get(currentStock)))
                 .toList();

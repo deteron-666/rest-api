@@ -31,6 +31,7 @@ Accept: application/json
 
 > {%
     client.global.set("productId", response.body.id);
+    client.global.set("productVersion", response.body.version);
 %}
 
 ### Получить товар по ID, сохранённому после создания
@@ -38,6 +39,7 @@ GET {{baseUrl}}/api/products/{{productId}}
 Accept: application/json
 
 ### Обновить товар
+# version из ответа на создание: если товар успели изменить (например, заказ списал остаток), будет 409
 PUT {{baseUrl}}/api/products/{{productId}}
 Content-Type: application/json
 Accept: application/json
@@ -46,7 +48,8 @@ Accept: application/json
   "name": "Updated mechanical keyboard",
   "description": "Updated from the HTTP client",
   "price": 84.90,
-  "stockQuantity": 10
+  "stockQuantity": 10,
+  "version": {{productVersion}}
 }
 
 ### Создать заказ на две единицы товара

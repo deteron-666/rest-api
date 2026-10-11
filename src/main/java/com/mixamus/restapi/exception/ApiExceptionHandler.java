@@ -2,8 +2,6 @@ package com.mixamus.restapi.exception;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
-import java.util.Map;
-import java.util.TreeMap;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
@@ -17,6 +15,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Единый формат ошибок API: RFC 9457 Problem Details (application/problem+json).
@@ -35,8 +36,8 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Параллельное изменение тех же данных: заказ изменили между чтением и записью (@Version)
-     * или не удалось дождаться блокировки строки. Клиент может повторить запрос.
+     * Параллельное изменение тех же данных: заказ или товар изменили между чтением и записью (@Version)
+     * или не удалось дождаться блокировки строки (lock_timeout в application.yaml). Клиент может повторить запрос.
      */
     @ExceptionHandler(ConcurrencyFailureException.class)
     public ProblemDetail handleConcurrencyFailure(ConcurrencyFailureException exception) {
@@ -79,6 +80,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             errors.putIfAbsent(error.getField(), error.getDefaultMessage());
         }
         return handleExceptionInternal(exception, validationProblem(errors), headers, status, request);
+    }
+
+    /**
+     * Всё непредусмотренное — 500 в том же формате problem+json, а не в формате страницы ошибок Spring Boot.
+     * Подробности только в лог: текст исключения может раскрыть внутреннее устройство.
+     */
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleUnexpected(Exception exception) {
+        logger.error("Unexpected error", exception);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
     }
 
     private ProblemDetail validationProblem(Map<String, String> errors) {

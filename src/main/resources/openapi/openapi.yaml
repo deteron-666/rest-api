@@ -93,6 +93,10 @@ paths:
     put:
       tags: [Products]
       summary: Update product
+      description: >
+        Replaces the product fields. To avoid overwriting changes made in the meantime (for example, stock
+        reserved by a new order), pass the version from the last read: if the product has changed since,
+        the update is rejected with 409. Without a version the update overwrites the current values.
       operationId: updateProduct
       requestBody:
         required: true
@@ -111,6 +115,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     delete:
       tags: [Products]
       summary: Delete product
@@ -121,6 +127,8 @@ paths:
           description: Product deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/orders:
     get:
       tags: [Orders]
@@ -355,7 +363,9 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     Conflict:
-      description: Request conflicts with the current state (not enough stock, wrong order status)
+      description: >
+        Request conflicts with the current state (not enough stock, wrong order status) or the resource
+        was modified concurrently; in the latter case the request can be retried after re-reading the resource
       content:
         application/problem+json:
           schema:
@@ -412,6 +422,12 @@ components:
           format: int32
           minimum: 0
           maximum: 1000000
+        version:
+          description: >
+            Optimistic locking version, changes on every update of the product, including stock changes by orders.
+            Ignored on create. On update, if set, must match the current version, otherwise 409 is returned.
+          type: integer
+          format: int64
     OrderStatus:
       type: string
       enum:

@@ -7,10 +7,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "products")
@@ -33,6 +35,13 @@ public class Product {
 
     @Column(nullable = false)
     private Integer stockQuantity;
+
+    /**
+     * Optimistic locking: остаток меняют и заказы (под SELECT ... FOR UPDATE), и PUT товара.
+     * Без версии PUT, прочитавший товар до списания, записал бы поверх него старый остаток.
+     */
+    @Version
+    private Long version;
 
     public Product(String name, String description, BigDecimal price, int stockQuantity) {
         update(name, description, price, stockQuantity);

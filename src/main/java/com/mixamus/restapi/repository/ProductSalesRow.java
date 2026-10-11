@@ -14,7 +14,6 @@ public record ProductSalesRow(
         long unitsSold,
         long ordersCount,
         BigDecimal revenue,
-        BigDecimal averageUnitPrice,
         BigDecimal totalRevenue,
         Integer currentStock
 ) {

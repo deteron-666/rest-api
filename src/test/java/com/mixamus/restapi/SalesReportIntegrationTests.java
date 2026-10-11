@@ -1,19 +1,10 @@
 package com.mixamus.restapi;
 
-import static org.hamcrest.Matchers.nullValue;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import com.mixamus.restapi.generated.model.OrderDto;
 import com.mixamus.restapi.generated.model.OrderItemDto;
 import com.mixamus.restapi.generated.model.ProductDto;
 import com.mixamus.restapi.service.OrderService;
 import com.mixamus.restapi.service.ProductService;
-import java.math.BigDecimal;
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +13,16 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
+
+import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Данные отчёта:
@@ -144,6 +145,38 @@ class SalesReportIntegrationTests {
 
         mockMvc.perform(get(REPORT).param("limit", "0"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void averageUnitPriceIsWeightedByQuantityWhenPriceChanged() throws Exception {
+        long headphonesId = product("Headphones", "100.00");
+        order(item(headphonesId, 1));
+        productService.update(headphonesId, new ProductDto("Headphones", new BigDecimal("50.00"), 99));
+        order(item(headphonesId, 9));
+
+        // 1 x 100 + 9 x 50 = 550 за 10 шт.: средняя цена 55, а не (100 + 50) / 2 = 75
+        mockMvc.perform(get(REPORT))
+                .andExpect(jsonPath("$[0].productName").value("Headphones"))
+                .andExpect(jsonPath("$[0].unitsSold").value(10))
+                .andExpect(jsonPath("$[0].revenue").value(550.0))
+                .andExpect(jsonPath("$[0].averageUnitPrice").value(55.0));
+    }
+
+    @Test
+    void reportWithZeroTotalRevenueReturnsZeroShareInsteadOfError() throws Exception {
+        long stickerId = product("Sticker", "0.00");
+        long freeOrderId = order(item(stickerId, 5));
+        jdbcTemplate.update("UPDATE orders SET created_at = ? WHERE id = ?",
+                Timestamp.from(Instant.parse("2010-06-01T00:00:00Z")), freeOrderId);
+
+        // За 2010 год продан только бесплатный товар: общая выручка 0
+        mockMvc.perform(get(REPORT).param("to", "2011-01-01T00:00:00Z"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].productName").value("Sticker"))
+                .andExpect(jsonPath("$[0].revenue").value(0.0))
+                .andExpect(jsonPath("$[0].averageUnitPrice").value(0.0))
+                .andExpect(jsonPath("$[0].revenueSharePercent").value(0.0));
     }
 
     private long product(String name, String price) {

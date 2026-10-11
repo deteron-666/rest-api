@@ -4,6 +4,14 @@ spring:
   profiles:
     # Локальный запуск без параметров использует PostgreSQL (профиль dev). В проде: SPRING_PROFILES_ACTIVE=prod
     default: dev
+  datasource:
+    hikari:
+      data-source-properties:
+        # Сколько запрос ждёт чужую блокировку строки (SELECT ... FOR UPDATE при заказе, UPDATE товара).
+        # По умолчанию PostgreSQL ждёт бесконечно, и одна зависшая транзакция по цепочке занимает весь пул.
+        # По истечении — ошибка 55P03: Spring превращает её в ConcurrencyFailureException, клиент получает 409.
+        # Параметр уходит драйверу при открытии соединения, поэтому действует во всех профилях
+        options: -c lock_timeout=5s
   liquibase:
     # Root changelog: подключает changelog'и релизов (db/changelog/changelog-<версия>/)
     change-log: classpath:db/changelog/changelog-root.yaml

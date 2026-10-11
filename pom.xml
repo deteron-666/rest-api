@@ -163,6 +163,10 @@
                                 <useTags>true</useTags>
                                 <openApiNullable>false</openApiNullable>
                                 <generateBuilders>true</generateBuilders>
+                                <!-- @NotNull на элементах всех списков (List<@Valid @NotNull OrderItemDto>):
+                                     "items": [null] отклоняется валидацией с 400, а не падает NPE в сервисе.
+                                     Элементы, которые могут быть null, помечаются в спецификации nullable: true -->
+                                <additionalItemsAnnotations>@NotNull</additionalItemsAnnotations>
                             </configOptions>
                         </configuration>
                     </execution>

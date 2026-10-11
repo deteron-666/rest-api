@@ -69,6 +69,17 @@ List<Product> findAllByIdForUpdate(@Param("ids") Collection<Long> ids);
 Если заказ одновременно оплачивают и отменяют, один запрос получит
 `ObjectOptimisticLockingFailureException` (HTTP 409), и изменения не затрут друг друга.
 
+`Product.version` защищает остаток. Его меняют и заказы (под `FOR UPDATE`), и `PUT` товара, который
+блокировку не берёт. Без версии `PUT`, прочитавший товар до списания, записал бы поверх него старый
+остаток. Версия возвращается в `ProductDto`: если клиент передаёт её в `PUT`, сервис сравнивает её
+с текущей и отвечает 409 при расхождении. Так ловится и изменение между чтением товара клиентом и
+запросом, а не только внутри одной транзакции.
+
+Сколько ждать чужую блокировку, задаёт `lock_timeout` (5 секунд, `application.yaml`). По умолчанию
+PostgreSQL ждёт бесконечно. По истечении — ошибка 55P03, которую Spring превращает в
+`ConcurrencyFailureException` (HTTP 409). Это проверяет тест
+`orderWaitingForLockedProductFailsWithConcurrencyFailureInsteadOfHanging`.
+
 ### 4. Заказ с позициями одним запросом: `@EntityGraph`
 
 ```java
@@ -104,6 +115,8 @@ List<Order> orders = queryFactory.selectFrom(order).distinct()
 `GET /api/reports/product-sales?from=&to=&status=&minRevenue=&limit=`, реализация —
 `SalesReportRepository.findTopProductsByRevenue`. Для каждого товара за период считаются
 проданные единицы, число заказов, выручка, средняя цена, доля в общей выручке и текущий остаток.
+Средняя цена и доля вычисляются в `ReportService` из агрегатов: средняя цена — `revenue / unitsSold`,
+а не `avg(unitPrice)`, который не учитывает количество в позиции (1 шт по 100 и 9 шт по 50 — это 55, а не 75).
 
 ```java
 StringExpression productName        = item.productName.max();
@@ -124,8 +137,7 @@ JPQLSubQuery<Integer> currentStock = JPAExpressions
         .select(product.stockQuantity).from(product)
         .where(product.id.eq(item.productId));
 
-queryFactory.select(item.productId, productName, unitsSold, ordersCount,
-                revenue, item.unitPrice.avg(), totalRevenue, currentStock)
+queryFactory.select(item.productId, productName, unitsSold, ordersCount, revenue, totalRevenue, currentStock)
         .from(item).join(item.order, order)
         .where(matching(order, filter))                         // динамический WHERE
         .groupBy(item.productId)
@@ -139,7 +151,7 @@ SQL, который Hibernate сгенерировал на PostgreSQL:
 
 ```sql
 select oi1_0.product_id, max(oi1_0.product_name), sum(oi1_0.quantity), count(distinct o1_0.id),
-       sum(oi1_0.total_price), avg(oi1_0.unit_price),
+       sum(oi1_0.total_price),
        (select sum(oi2_0.total_price) from rest_api.order_items oi2_0
           join rest_api.orders o2_0 on o2_0.id = oi2_0.order_id
          where o2_0.status in (?, ?) and o2_0.created_at >= ?),

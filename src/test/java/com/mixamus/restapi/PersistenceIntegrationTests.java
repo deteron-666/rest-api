@@ -1,9 +1,6 @@
 package com.mixamus.restapi;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
+import com.mixamus.restapi.entity.Product;
 import com.mixamus.restapi.exception.InsufficientStockException;
 import com.mixamus.restapi.exception.NotFoundException;
 import com.mixamus.restapi.generated.model.OrderDto;
@@ -11,25 +8,37 @@ import com.mixamus.restapi.generated.model.OrderItemDto;
 import com.mixamus.restapi.generated.model.OrderStatus;
 import com.mixamus.restapi.generated.model.ProductDto;
 import com.mixamus.restapi.repository.OrderFilter;
+import com.mixamus.restapi.repository.ProductRepository;
 import com.mixamus.restapi.service.OrderService;
 import com.mixamus.restapi.service.ProductService;
 import jakarta.persistence.EntityManagerFactory;
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ActiveProfiles("test")
 @SpringBootTest
@@ -42,7 +51,13 @@ class PersistenceIntegrationTests {
     private OrderService orderService;
 
     @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
@@ -145,6 +160,53 @@ class PersistenceIntegrationTests {
     }
 
     @Test
+    void productUpdateFailsIfConcurrentOrderChangedStockAfterProductWasRead() {
+        ProductDto product = productService.create(product("Mouse", "10.00", 10));
+
+        assertThrows(OptimisticLockingFailureException.class, () -> transactionTemplate.executeWithoutResult(status -> {
+            Product loaded = productRepository.findById(product.getId()).orElseThrow();
+            // Пока эта транзакция держит товар с остатком 10, другая создаёт заказ и списывает 3 шт.
+            CompletableFuture.runAsync(() -> orderService.create(order(item(product.getId(), 3)))).join();
+            // Как PUT: меняется название, а остаток записывается тот, что был прочитан до заказа
+            loaded.update("Wireless mouse", null, new BigDecimal("10.00"), 10);
+        }));
+
+        assertEquals(7, productService.findById(product.getId()).getStockQuantity());
+    }
+
+    @Test
+    void everyConnectionHasLockTimeout() {
+        assertEquals("5s", jdbcTemplate.queryForObject("SHOW lock_timeout", String.class));
+    }
+
+    @Test
+    void orderWaitingForLockedProductFailsWithConcurrencyFailureInsteadOfHanging() throws Exception {
+        ProductDto product = productService.create(product("Mouse", "10.00", 10));
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        // Другая транзакция держит блокировку товара (SELECT ... FOR UPDATE) и не завершается
+        CompletableFuture<Void> lockHolder = CompletableFuture.runAsync(() -> transactionTemplate.executeWithoutResult(status -> {
+            productRepository.findAllByIdForUpdate(List.of(product.getId()));
+            locked.countDown();
+            await(release);
+        }));
+        try {
+            assertTrue(locked.await(10, TimeUnit.SECONDS));
+            assertThrows(ConcurrencyFailureException.class, () -> transactionTemplate.executeWithoutResult(status -> {
+                // Тот же lock_timeout, что задан в application.yaml, но короче, чтобы тест не ждал 5 секунд
+                jdbcTemplate.execute("SET LOCAL lock_timeout = '200ms'");
+                orderService.create(order(item(product.getId(), 1)));
+            }));
+        } finally {
+            release.countDown();
+            lockHolder.join();
+        }
+
+        assertEquals(10, productService.findById(product.getId()).getStockQuantity());
+    }
+
+    @Test
     void orderListLoadsItemsWithoutNPlusOneQueries() {
         ProductDto product = productService.create(product("Mouse", "10.00", 100));
         for (int i = 0; i < 10; i++) {
@@ -167,6 +229,15 @@ class PersistenceIntegrationTests {
                 "INSERT INTO products (name, price, stock_quantity) VALUES ('Broken', 1, -1)"));
         assertThrows(Exception.class, () -> jdbcTemplate.update(
                 "INSERT INTO orders (customer_name, status, total_amount) VALUES ('Customer', 'UNKNOWN', 0)"));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
     }
 
     private ProductDto product(String name, String price, int stockQuantity) {
